@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>EVE Import Tracker v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>EVE Import Tracker v2</h1>
+      <p>Paste wallet transactions and optionally save them as inventory lots.</p>
+
+      <div class="nav-buttons">
+        <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+          Imports
+        </a>
+        <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+          Export
+        </a>
+        <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+          Inventory
+        </a>
+        <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+          Import / export log
+        </a>
+      </div>
+    </header>
+
+    <section class="card">
+      <form method="post" class="form-grid">
+        <div class="form-section">
+          <h2>Wallet transactions</h2>
+          <p class="help-text">
+            Paste your market transaction lines here (tab-separated export from EVE).
+          </p>
+          <textarea
+            name="transactions"
+            class="textarea"
+            placeholder="2025.11.16 11:51&#9;10 000&#9;Meson Exotic Plasma M&#9;1 090 ISK&#9;-10 900 000 ISK&#9;..."
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Options</h2>
+
+          <div class="field">
+            <label>
+              <input type="checkbox" name="save_to_inventory" value="true">
+              Save these imports to inventory
+            </label>
+          </div>
+
+          <button type="submit" class="primary-button">
+            Process imports
+          </button>
+
+          {% if saved %}
+            <p class="help-text" style="margin-top:8px;">
+              ✅ Imports processed{% if items %} and saved to inventory{% endif %}.
+            </p>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+
+        <section class="card">
+      <form method="post" action="/import/janice" class="form-grid">
+        <div class="form-section">
+          <h2>Import from Janice</h2>
+          <p class="help-text">
+            Paste Janice table output (item, amount, volume, Jita buy, Jita sell).  
+            Cost per unit will be taken from Jita buy or sell price.
+          </p>
+          <textarea
+            name="janice_data"
+            class="textarea"
+            placeholder="Chromium&#9;9641&#9;0.05&#9;6479.04&#9;6630.00&#10;Vanadium&#9;3710&#9;0.05&#9;1810.50&#9;1930.86"
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Options</h2>
+
+          <div class="field">
+            <label class="field-label" for="price_source">Use price</label>
+            <select id="price_source" name="price_source" class="input">
+              <option value="buy">Jita buy price (cost)</option>
+              <option value="sell">Jita sell price (cost)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>
+              <input type="checkbox" name="save_to_inventory" value="true">
+              Save these imports to inventory
+            </label>
+          </div>
+
+          <button type="submit" class="primary-button">
+            Process Janice imports
+          </button>
+
+          {% if janice_message %}
+            <p class="help-text" style="margin-top:8px;">
+              {{ janice_message }}
+            </p>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+
+
+    {% if items %}
+      <section class="card">
+        <div class="card-header">
+          <h2>Parsed items</h2>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="col-number">Qty</th>
+                <th class="col-number">Unit cost</th>
+                <th class="col-number">Total cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+                <tr>
+                  <td class="col-item">{{ it.item_name }}</td>
+                  <td class="col-number">{{ it.qty }}</td>
+                  <td class="col-number">{{ '{:,.2f}'.format(it.unit_cost) }}</td>
+                  <td class="col-number">{{ '{:,.0f}'.format(it.total_cost) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</body>
+</html>

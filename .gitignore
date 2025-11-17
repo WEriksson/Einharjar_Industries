@@ -4,7 +4,6 @@ __pycache__/
 *.pyo
 *.pyd
 *.log
-*.sqlite3
 
 # Virtual env
 venv/
@@ -15,6 +14,6 @@ venv/
 .idea/
 *.code-workspace
 
-# OS stuff
+# OS
 .DS_Store
 Thumbs.db

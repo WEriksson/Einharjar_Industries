@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Export - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Export / usage</h1>
+      <p>Paste wallet transactions to record sales or usage against your inventory (FIFO, EVE time).</p>
+
+      <div class="nav-buttons">
+        <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+          Imports
+        </a>
+        <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+          Export
+        </a>
+        <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+          Inventory
+        </a>
+        <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+          Import / export log
+        </a>
+      </div>
+    </header>
+
+    <section class="card">
+      <form method="post" class="form-grid">
+        <div class="form-section">
+          <h2>Export transactions</h2>
+          <p class="help-text">
+            Paste your market transaction lines (sales) here, same format as imports.  
+            Each line will consume from inventory using FIFO and log an event with the EVE timestamp.
+          </p>
+          <textarea
+            name="transactions"
+            class="textarea"
+            placeholder="2025.11.16 12:05&#9;10&#9;Tritanium&#9;4 ISK&#9;40 ISK&#9;..."
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Options</h2>
+
+          <div class="field">
+            <label class="field-label" for="event_type">Type</label>
+            <select id="event_type" name="event_type" class="input">
+              <option value="sale">Sale</option>
+              <option value="industry">Industry use</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="note">Note (optional)</label>
+            <input id="note" name="note" class="input" type="text" placeholder="Contract ID, buyer, job, etc.">
+          </div>
+
+          <button type="submit" class="primary-button">
+            Process exports
+          </button>
+        </div>
+      </form>
+    </section>
+
+        <section class="card">
+      <form method="post" action="/export/janice" class="form-grid">
+        <div class="form-section">
+          <h2>Export from Janice</h2>
+          <p class="help-text">
+            Paste Janice table output to record sales or industry usage against inventory using FIFO.  
+            Unit price is taken from Jita buy or sell price.
+          </p>
+          <textarea
+            name="janice_data"
+            class="textarea"
+            placeholder="Chromium&#9;9641&#9;0.05&#9;6479.04&#9;6630.00&#10;Vanadium&#9;3710&#9;0.05&#9;1810.50&#9;1930.86"
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Options</h2>
+
+          <div class="field">
+            <label class="field-label" for="price_source">Use price</label>
+            <select id="price_source" name="price_source" class="input">
+              <option value="sell">Jita sell price (default sale)</option>
+              <option value="buy">Jita buy price</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="event_type">Type</label>
+            <select id="event_type" name="event_type" class="input">
+              <option value="sale">Sale</option>
+              <option value="industry">Industry use</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="note">Note (optional)</label>
+            <input id="note" name="note" class="input" type="text" placeholder="Contract ID, buyer, job, etc.">
+          </div>
+
+          <button type="submit" class="primary-button">
+            Process Janice exports
+          </button>
+        </div>
+      </form>
+    </section>
+
+
+    {% if results %}
+      <section class="card">
+        <div class="card-header">
+          <h2>Results</h2>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="col-number">Quantity</th>
+                <th class="col-number">Unit price</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in results %}
+                <tr>
+                  <td class="col-item">{{ r.item_name }}</td>
+                  <td class="col-number">{{ r.qty }}</td>
+                  <td class="col-number">
+                    {% if r.unit_price is not none %}
+                      {{ '{:,.2f}'.format(r.unit_price) }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if r.ok %}
+                      ✅ {{ r.status }}
+                    {% else %}
+                      ⚠️ {{ r.status }}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</body>
+</html>

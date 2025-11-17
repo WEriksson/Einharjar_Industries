@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Inventory - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .table-toolbar .search-input {
+      max-width: 260px;
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th.sortable::after {
+      content: "⇅";
+      font-size: 0.7rem;
+      opacity: 0.35;
+      margin-left: 4px;
+    }
+    th.sortable[data-order="asc"]::after {
+      content: "↑";
+      opacity: 0.8;
+    }
+    th.sortable[data-order="desc"]::after {
+      content: "↓";
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Inventory lots</h1>
+      <p>FIFO lots with their own cost basis.</p>
+
+      <div class="nav-buttons">
+        <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+          Imports
+        </a>
+        <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+          Export
+        </a>
+        <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+          Inventory
+        </a>
+        <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+          Import / export log
+        </a>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="table-toolbar">
+        <h2>Lots</h2>
+        <div class="field search-input">
+          <input
+            id="inventory-search"
+            class="input"
+            type="text"
+            placeholder="Search item name..."
+          >
+        </div>
+      </div>
+
+      {% if lots %}
+        <div class="table-wrapper">
+          <table class="data-table" id="inventory-table">
+            <thead>
+              <tr>
+                <th class="col-number sortable" data-type="number">Lot ID</th>
+                <th class="sortable" data-type="string" data-item-column="true">Item</th>
+                <th class="col-number sortable" data-type="number">Qty remaining</th>
+                <th class="col-number sortable" data-type="number">Unit cost</th>
+                <th class="sortable" data-type="string">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lot in lots %}
+                <tr>
+                  <td class="col-number">{{ lot.id }}</td>
+                  <td class="col-item">{{ lot.item_name }}</td>
+                  <td class="col-number">{{ lot.qty_remaining }}</td>
+                  <td class="col-number">{{ '{:,.2f}'.format(lot.unit_cost) }}</td>
+                  <td>{{ lot.source or '' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">No inventory lots yet. Import and save some trades first.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const table = document.getElementById("inventory-table");
+      if (!table) return;
+
+      const tbody = table.querySelector("tbody");
+      const headers = table.querySelectorAll("th.sortable");
+      const searchInput = document.getElementById("inventory-search");
+
+      // Column sorting
+      headers.forEach((th, index) => {
+        th.addEventListener("click", () => {
+          const type = th.dataset.type || "string";
+          const currentOrder = th.dataset.order || "none";
+          const newOrder = currentOrder === "asc" ? "desc" : "asc";
+
+          headers.forEach(h => {
+            if (h !== th) {
+              h.dataset.order = "none";
+            }
+          });
+          th.dataset.order = newOrder;
+
+          const rows = Array.from(tbody.querySelectorAll("tr"));
+          rows.sort((a, b) => {
+            const aText = a.children[index].textContent.trim();
+            const bText = b.children[index].textContent.trim();
+
+            let cmp = 0;
+            if (type === "number") {
+              const aVal = parseFloat(aText.replace(/,/g, "")) || 0;
+              const bVal = parseFloat(bText.replace(/,/g, "")) || 0;
+              cmp = aVal - bVal;
+            } else {
+              cmp = aText.localeCompare(bText, undefined, { sensitivity: "base" });
+            }
+
+            return newOrder === "asc" ? cmp : -cmp;
+          });
+
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+
+      // Item name search
+      if (searchInput) {
+        const itemColIndex = Array.from(headers).findIndex(
+          h => h.dataset.itemColumn === "true"
+        );
+
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.trim().toLowerCase();
+          const rows = Array.from(tbody.querySelectorAll("tr"));
+
+          rows.forEach(row => {
+            const cells = row.children;
+            const itemCell = cells[itemColIndex];
+            if (!itemCell) {
+              row.style.display = "";
+              return;
+            }
+            const text = itemCell.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? "" : "none";
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

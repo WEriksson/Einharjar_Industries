@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Import/Export Log - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .table-toolbar .filter-select {
+      max-width: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Import / Export log</h1>
+      <p>All events are shown in EVE time (UTC).</p>
+
+      <div class="nav-buttons">
+        <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+          Imports
+        </a>
+        <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+          Export
+        </a>
+        <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+          Inventory
+        </a>
+        <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+          Import / export log
+        </a>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="table-toolbar">
+        <h2>Latest events</h2>
+        <div class="field filter-select">
+          <select id="log-filter" class="input">
+            <option value="all">Show all</option>
+            <option value="import">Imports only</option>
+            <option value="sale">Sales only</option>
+            <option value="industry">Industry only</option>
+          </select>
+        </div>
+      </div>
+
+      {% if events %}
+        <div class="table-wrapper">
+          <table class="data-table" id="log-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="col-number">Time (EVE/UTC)</th>
+                <th>Item</th>
+                <th class="col-number">Quantity</th>
+                <th class="col-number">Unit price</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in events %}
+                <tr data-event-type="{{ ev.event_type }}">
+                  <td class="col-item">{{ ev.event_type }}</td>
+                  <td class="col-number">
+                    {{ ev.eve_time.strftime('%Y-%m-%d %H:%M') }}
+                  </td>
+                  <td>{{ ev.item_name }}</td>
+                  <td class="col-number">{{ ev.quantity }}</td>
+                  <td class="col-number">
+                    {% if ev.unit_price is not none %}
+                      {{ '{:,.2f}'.format(ev.unit_price) }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>{{ ev.note or '' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">No events logged yet. Save some imports and exports first.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const filter = document.getElementById("log-filter");
+      const table = document.getElementById("log-table");
+      if (!filter || !table) return;
+
+      const rows = Array.from(table.querySelectorAll("tbody tr"));
+
+      filter.addEventListener("change", () => {
+        const value = filter.value;
+        rows.forEach(row => {
+          const t = row.dataset.eventType;
+          if (value === "all" || t === value) {
+            row.style.display = "";
+          } else {
+            row.style.display = "none";
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

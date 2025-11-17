@@ -181,6 +181,54 @@ body {
   box-shadow: 0 8px 18px rgba(14, 110, 214, 0.5);
 }
 
+/* Nav buttons (for links like Inventory / Log) */
+
+.nav-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(8, 12, 26, 0.9);
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, background 0.08s ease-out, color 0.08s ease-out;
+}
+
+.nav-button:hover {
+  transform: translateY(-1px);
+  background: rgba(18, 26, 48, 0.95);
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
+}
+
+.nav-button:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+.nav-button--accent {
+  border-color: var(--accent);
+  color: #020308;
+  background: radial-gradient(circle at top left, var(--accent), #2686ff);
+  font-weight: 600;
+}
+
+
+
 /* Table */
 
 .table-wrapper {
