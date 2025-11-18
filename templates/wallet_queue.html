@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Wallet queue - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Wallet queue</h1>
+      <p>Review queued wallet transactions and choose which ones to apply to inventory.</p>
+
+      <div class="nav-buttons">
+        <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+          Imports
+        </a>
+        <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+          Export
+        </a>
+        <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+          Inventory
+        </a>
+        <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+          Import / export log
+        </a>
+        <a href="/settings" class="nav-button {% if current_page == 'settings' %}nav-button--accent{% endif %}">
+          Settings
+        </a>
+        <a href="/wallet/queue" class="nav-button {% if current_page == 'wallet_queue' %}nav-button--accent{% endif %}">
+          Wallet queue
+        </a>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="card">
+        <p class="help-text">{{ message }}</p>
+      </section>
+    {% endif %}
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Pending wallet entries</h2>
+          <p class="help-text">
+            These entries were fetched from your EVE wallet but have not yet been applied to inventory.
+            Select the ones you want to apply or ignore.
+          </p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+          <a href="/wallet/sync-once" class="nav-button">
+            Sync wallet (queue)
+          </a>
+        </div>
+      </div>
+
+      {% if entries %}
+        <form method="post" action="/wallet/queue/apply">
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 32px;">
+                    <input type="checkbox" id="select-all" onclick="toggleAll(this)">
+                  </th>
+                  <th>When (EVE)</th>
+                  <th>Character</th>
+                  <th>Direction</th>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Unit price</th>
+                  <th>Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in entries %}
+                  <tr>
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="entry_ids"
+                        value="{{ e.id }}"
+                      >
+                    </td>
+                    <td>{{ e.eve_time }}</td>
+                    <td>{{ e.character.character_name if e.character else '' }}</td>
+                    <td>
+                      {% if e.direction == 'import' %}
+                        Import (buy)
+                      {% else %}
+                        Sale
+                      {% endif %}
+                    </td>
+                    <td>{{ e.item.name }}</td>
+                    <td>{{ e.quantity }}</td>
+                    <td>{{ "%.2f" | format(e.unit_price) }}</td>
+                    <td>
+                      {% if e.location_name %}
+                        {{ e.location_name }}
+                      {% elif e.location_id %}
+                        {{ e.location_id }}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="form-actions" style="margin-top: 16px; display: flex; gap: 12px;">
+            <button type="submit" name="action" value="apply" class="primary-button">
+              Apply selected
+            </button>
+            <button type="submit" name="action" value="ignore" class="nav-button">
+              Ignore selected
+            </button>
+          </div>
+        </form>
+      {% else %}
+        <p class="help-text">
+          No pending wallet entries. Use "Sync wallet" on the Settings page to queue new ones.
+        </p>
+      {% endif %}
+    </section>
+  </div>
+
+  <script>
+    function toggleAll(source) {
+      const checkboxes = document.querySelectorAll('input[name="entry_ids"]');
+      for (const cb of checkboxes) {
+        cb.checked = source.checked;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ __pycache__/
 # Virtual env
 venv/
 .env
+run_app.ps1
 
 # Editors/IDE
 .vscode/

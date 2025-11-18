@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Settings - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Settings</h1>
+      <p>Configure staging, Jita and basic ESI setup.</p>
+
+      <div class="nav-buttons">
+  <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
+    Imports
+  </a>
+  <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
+    Export
+  </a>
+  <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
+    Inventory
+  </a>
+  <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
+    Import / export log
+  </a>
+  <a href="/settings" class="nav-button {% if current_page == 'settings' %}nav-button--accent{% endif %}">
+    Settings
+  </a>
+  <a href="/wallet/queue" class="nav-button {% if current_page == 'wallet_queue' %}nav-button--accent{% endif %}">
+    Wallet queue
+  </a>
+</div>
+
+    </header>
+
+    {% if message %}
+      <section class="card">
+        <p class="help-text">{{ message }}</p>
+      </section>
+    {% endif %}
+
+    <!-- Locations / basic settings -->
+    <section class="card">
+      <h2>Locations</h2>
+      <p class="help-text">
+        Basic staging and Jita setup. We'll refine this with ESI lookups later.
+      </p>
+
+      <form method="post" class="form-grid">
+        <div class="form-section">
+          <h3>Staging</h3>
+
+          <div class="field">
+            <label class="field-label" for="staging_system_id">Staging system ID</label>
+            <input
+              id="staging_system_id"
+              name="staging_system_id"
+              class="input"
+              type="number"
+              value="{{ settings.staging_system_id or '' }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="staging_system_name">Staging system name (optional)</label>
+            <input
+              id="staging_system_name"
+              name="staging_system_name"
+              class="input"
+              type="text"
+              value="{{ settings.staging_system_name or '' }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="staging_structure_id">Staging structure/station ID</label>
+            <input
+              id="staging_structure_id"
+              name="staging_structure_id"
+              class="input"
+              type="number"
+              value="{{ settings.staging_structure_id or '' }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="staging_structure_name">Staging structure/station name (optional)</label>
+            <input
+              id="staging_structure_name"
+              name="staging_structure_name"
+              class="input"
+              type="text"
+              value="{{ settings.staging_structure_name or '' }}"
+            >
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Jita / hub</h3>
+
+          <div class="field">
+            <label class="field-label" for="jita_system_id">Jita system ID</label>
+            <input
+              id="jita_system_id"
+              name="jita_system_id"
+              class="input"
+              type="number"
+              value="{{ settings.jita_system_id or '' }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="jita_location_id">Jita station/structure ID</label>
+            <input
+              id="jita_location_id"
+              name="jita_location_id"
+              class="input"
+              type="number"
+              value="{{ settings.jita_location_id or '' }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="market_scan_interval_minutes">Market scan interval (minutes)</label>
+            <input
+              id="market_scan_interval_minutes"
+              name="market_scan_interval_minutes"
+              class="input"
+              type="number"
+              min="1"
+              value="{{ settings.market_scan_interval_minutes or '' }}"
+            >
+          </div>
+
+          <button type="submit" class="primary-button" style="margin-top: 16px;">
+            Save settings
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Characters & corps -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Linked characters &amp; corporations</h2>
+          <p class="help-text">
+            Connect one or more EVE characters via SSO. The first one will be marked as your main
+            and default trader. Wallet sync will use the default trader to import buys and sales into
+            your inventory.
+          </p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+          <a href="/auth/login" class="primary-button">
+            Connect EVE character
+          </a>
+          <a href="/wallet/sync-once" class="nav-button">
+            Sync wallet now
+          </a>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Character</th>
+              <th>Corporation</th>
+              <th>Main / Trader</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if characters %}
+              {% for ch in characters %}
+                <tr>
+                  <td>{{ ch.character_name }}</td>
+                  <td>{{ ch.corporation_name or '' }}</td>
+                  <td>
+                    {% if ch.is_main %}Main {% endif %}
+                    {% if ch.is_default_trader %}Trader{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="3" class="col-item">
+                  No characters linked yet. Click "Connect EVE character" above.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
