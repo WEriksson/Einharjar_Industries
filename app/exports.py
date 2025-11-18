@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, asc
+from sqlalchemy import select
 
 from .db import get_db
-from .models import Item, InventoryLot, InventoryEvent
+from .models import Item
 from .utils_parsing import parse_transactions, parse_janice_rows
+from .inventory_service import consume_lot_fifo, InsufficientInventoryError
 
 
 router = APIRouter()
@@ -70,59 +71,34 @@ async def handle_export(
             )
             continue
 
-        # Fetch lots for this item in FIFO order
-        stmt_lots = (
-            select(InventoryLot)
-            .where(
-                InventoryLot.item_id == item.id,
-                InventoryLot.quantity_remaining > 0,
-            )
-            .order_by(asc(InventoryLot.acquired_at), asc(InventoryLot.id))
-        )
-        res_lots = await db.execute(stmt_lots)
-        lots = list(res_lots.scalars())
-
-        total_available = sum(l.quantity_remaining for l in lots)
-        if total_available < qty:
-            results.append(
-                {
-                    "item_name": item_name,
-                    "qty": qty,
-                    "status": f"Not enough in inventory (have {total_available})",
-                    "ok": False,
-                    "unit_price": unit_price,
-                }
-            )
-            continue
-
         # Use the EVE time from the wallet line (tx["time"]), convert to naive UTC
         tx_time = tx.get("time")
         if tx_time is None:
             from datetime import datetime
             tx_time = datetime.now(timezone.utc)
         eve_time = tx_time.astimezone(timezone.utc).replace(tzinfo=None)
-
-        remaining = qty
-        for lot in lots:
-            if remaining <= 0:
-                break
-            take = min(lot.quantity_remaining, remaining)
-            if take <= 0:
-                continue
-
-            lot.quantity_remaining -= take
-            remaining -= take
-
-            event = InventoryEvent(
-                event_type=event_type,
+        try:
+            await consume_lot_fifo(
+                db,
+                item=item,
+                quantity=qty,
                 eve_time=eve_time,
-                item_id=item.id,
-                lot_id=lot.id,
-                quantity=take,
-                unit_price=unit_price,
+                event_type=event_type,
                 note=note,
+                unit_price=unit_price,
+                allow_partial=False,
             )
-            db.add(event)
+        except InsufficientInventoryError as exc:
+            results.append(
+                {
+                    "item_name": item_name,
+                    "qty": qty,
+                    "status": f"Not enough in inventory (have {exc.available})",
+                    "ok": False,
+                    "unit_price": unit_price,
+                }
+            )
+            continue
 
         await db.commit()
 
@@ -177,8 +153,6 @@ async def handle_export_janice(
         else:
             unit_price = r["jita_sell"]
 
-        total_available = 0
-
         # Find item
         stmt_item = select(Item).where(Item.name == item_name)
         res_item = await db.execute(stmt_item)
@@ -195,55 +169,30 @@ async def handle_export_janice(
             )
             continue
 
-        # Get lots for this item
-        stmt_lots = (
-            select(InventoryLot)
-            .where(
-                InventoryLot.item_id == item.id,
-                InventoryLot.quantity_remaining > 0,
+        # No timestamp from Janice, so use "now" in EVE/UTC
+        eve_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        try:
+            await consume_lot_fifo(
+                db,
+                item=item,
+                quantity=qty,
+                eve_time=eve_time,
+                event_type=event_type,
+                note=note or f"Janice {price_source}",
+                unit_price=unit_price,
+                allow_partial=False,
             )
-            .order_by(asc(InventoryLot.acquired_at), asc(InventoryLot.id))
-        )
-        res_lots = await db.execute(stmt_lots)
-        lots = list(res_lots.scalars())
-
-        total_available = sum(l.quantity_remaining for l in lots)
-        if total_available < qty:
+        except InsufficientInventoryError as exc:
             results.append(
                 {
                     "item_name": item_name,
                     "qty": qty,
-                    "status": f"Not enough in inventory (have {total_available})",
+                    "status": f"Not enough in inventory (have {exc.available})",
                     "ok": False,
                     "unit_price": unit_price,
                 }
             )
             continue
-
-        # No timestamp from Janice, so use "now" in EVE/UTC
-        eve_time = datetime.now(timezone.utc).replace(tzinfo=None)
-
-        remaining = qty
-        for lot in lots:
-            if remaining <= 0:
-                break
-            take = min(lot.quantity_remaining, remaining)
-            if take <= 0:
-                continue
-
-            lot.quantity_remaining -= take
-            remaining -= take
-
-            event = InventoryEvent(
-                event_type=event_type,
-                eve_time=eve_time,
-                item_id=item.id,
-                lot_id=lot.id,
-                quantity=take,
-                unit_price=unit_price,
-                note=note or f"Janice {price_source}",
-            )
-            db.add(event)
 
         await db.commit()
 

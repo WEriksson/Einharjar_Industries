@@ -163,9 +163,12 @@
                     -
                   {% endif %}
                 </td>
-                <td>
+                <td style="display:flex;gap:6px;flex-wrap:wrap;">
                   <a href="/inventory/item/{{ item.id }}" class="nav-button nav-button--accent" style="padding:4px 12px;font-size:0.7rem;">
                     View lots
+                  </a>
+                  <a href="/sell-planner?item_id={{ item.id }}&qty={{ qty }}" class="nav-button" style="padding:4px 12px;font-size:0.7rem;">
+                    Plan sale
                   </a>
                 </td>
               </tr>

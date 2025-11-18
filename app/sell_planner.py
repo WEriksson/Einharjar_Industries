@@ -2,7 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import re
 from typing import List, Tuple, Optional, Dict, Any
 
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import APIRouter, Request, Depends, Form, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -69,10 +69,56 @@ def eve_round_price(price: Decimal) -> Decimal:
 
 
 @router.get("/sell-planner", response_class=HTMLResponse)
-async def sell_planner_form(request: Request) -> HTMLResponse:
-    """
-    Show empty sell planner form.
-    """
+async def sell_planner_form(
+    request: Request,
+    item_id: Optional[List[int]] = Query(default=None),
+    qty: Optional[List[int]] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    """Show sell planner form, optionally prefilled from one or many inventory items."""
+
+    raw_lines_entries: List[str] = []
+    messages: List[str] = []
+
+    item_ids = item_id or []
+    qty_values = qty or []
+
+    for idx, item_id_value in enumerate(item_ids):
+        stmt_item = select(Item).where(Item.id == item_id_value)
+        res_item = await db.execute(stmt_item)
+        item = res_item.scalar_one_or_none()
+
+        if not item:
+            messages.append(f"Item id {item_id_value} not found.")
+            continue
+
+        stmt_qty = (
+            select(InventoryLot.quantity_remaining)
+            .where(
+                InventoryLot.item_id == item.id,
+                InventoryLot.quantity_remaining > 0,
+            )
+        )
+        res_qty = await db.execute(stmt_qty)
+        available_qty = sum(int(row[0]) for row in res_qty.all())
+
+        if available_qty <= 0:
+            messages.append(f"No remaining inventory found for {item.name}.")
+            continue
+
+        requested_qty = None
+        if idx < len(qty_values):
+            requested_qty = qty_values[idx]
+
+        if not requested_qty or requested_qty <= 0:
+            requested_qty = available_qty
+
+        requested_qty = min(requested_qty, available_qty)
+        raw_lines_entries.append(f"{item.name}\t{requested_qty}")
+
+    raw_lines = "\n".join(raw_lines_entries)
+    message = " ".join(messages) if messages else None
+
     return request.app.state.templates.TemplateResponse(
         "sell_planner.html",
         {
@@ -80,12 +126,12 @@ async def sell_planner_form(request: Request) -> HTMLResponse:
             "current_page": "sell_planner",
             "results": None,
             "summary": None,
-            "raw_lines": "",
+            "raw_lines": raw_lines,
             "target_profit_percent": 10.0,
             "sales_tax_percent": 3.6,
             "ssc_surcharge_percent": 0.5,
             "broker_fee_percent": 1.0,
-            "message": None,
+            "message": message,
         },
     )
 

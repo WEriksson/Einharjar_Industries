@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from .db import get_db, Base, engine
-from .models import Item, InventoryLot, ImportBatch, InventoryEvent
+from .models import Item, ImportBatch
 from .utils_parsing import parse_transactions, aggregate_by_item, parse_janice_rows
+from .inventory_service import create_lot_from_import
 
 
 router = APIRouter()
@@ -86,35 +87,23 @@ async def handle_import(
                 db.add(item)
                 await db.flush()
 
-                # EVE time from wallet line; fall back to now if missing
-                tx_time = tx.get("time")
-                if tx_time is None:
-                    tx_time = datetime.now(timezone.utc)
-                dt_eve = tx_time.astimezone(timezone.utc).replace(tzinfo=None)
+            # EVE time from wallet line; fall back to now if missing
+            tx_time = tx.get("time")
+            if tx_time is None:
+                tx_time = datetime.now(timezone.utc)
+            dt_eve = tx_time.astimezone(timezone.utc).replace(tzinfo=None)
 
-
-            lot = InventoryLot(
-                item_id=item.id,
-                quantity_total=qty,
-                quantity_remaining=qty,
-                unit_cost=unit_cost,
-                acquired_at=dt_eve,   # internal; not shown in UI
-                source="Manual import",
-                batch_id=batch.id,
-            )
-            db.add(lot)
-            await db.flush()  # get lot.id for event
-
-            event = InventoryEvent(
-                event_type="import",
-                eve_time=dt_eve,
-                item_id=item.id,
-                lot_id=lot.id,
+            await create_lot_from_import(
+                db,
+                item=item,
                 quantity=qty,
-                unit_price=unit_cost,
+                unit_cost=unit_cost,
+                acquired_at=dt_eve,
+                eve_time=dt_eve,
+                source="Manual import",
+                batch=batch,
                 note="Manual import",
             )
-            db.add(event)
 
         await db.commit()
 
@@ -187,28 +176,17 @@ async def handle_import_janice(
         if save_to_inventory:
             dt_now = datetime.utcnow()
 
-            lot = InventoryLot(
-                item_id=item.id,
-                quantity_total=qty,
-                quantity_remaining=qty,
+            await create_lot_from_import(
+                db,
+                item=item,
+                quantity=qty,
                 unit_cost=unit_cost,
                 acquired_at=dt_now,
+                eve_time=dt_now,
                 source=f"Janice import ({price_source})",
-                batch_id=batch.id,
-            )
-            db.add(lot)
-            await db.flush()
-
-            event = InventoryEvent(
-                event_type="import",
-                eve_time=dt_now,  # no EVE timestamp in Janice, so use "now" UTC
-                item_id=item.id,
-                lot_id=lot.id,
-                quantity=qty,
-                unit_price=unit_cost,
+                batch=batch,
                 note=f"Janice {price_source}",
             )
-            db.add(event)
 
         display_items.append(
             {

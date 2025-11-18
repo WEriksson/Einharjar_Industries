@@ -37,8 +37,25 @@
         </div>
       </div>
 
+      <div class="filter-bar" style="margin-bottom: 12px; display: flex; gap: 12px; align-items: center;">
+        <form method="get" action="/wallet/queue" style="display: flex; gap: 8px; align-items: center;">
+          <label for="character-filter" class="help-text" style="margin: 0;">Character filter</label>
+          <select id="character-filter" name="character_id" onchange="this.form.submit()">
+            <option value="">All characters</option>
+            {% for ch in queue_characters %}
+              <option value="{{ ch.id }}" {% if selected_character_id == ch.id %}selected{% endif %}>
+                {{ ch.character_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+
       {% if entries %}
         <form method="post" action="/wallet/queue/apply">
+          {% if selected_character_id %}
+            <input type="hidden" name="selected_character_id" value="{{ selected_character_id }}">
+          {% endif %}
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
@@ -63,10 +80,13 @@
                         type="checkbox"
                         name="entry_ids"
                         value="{{ e.id }}"
+                        checked
                       >
                     </td>
                     <td>{{ e.eve_time }}</td>
-                    <td>{{ e.character.character_name if e.character else '' }}</td>
+                    <td>
+                      <strong>{{ e.character.character_name if e.character else 'Unknown' }}</strong>
+                    </td>
                     <td>
                       {% if e.direction == 'import' %}
                         Import (buy)
@@ -103,7 +123,11 @@
         </form>
       {% else %}
         <p class="help-text">
-          No pending wallet entries. Use "Sync wallet" on the Settings page to queue new ones.
+          {% if selected_character_id %}
+            No wallet imports pending for this character. Run wallet sync from Settings to populate this queue.
+          {% else %}
+            No wallet imports pending. Run wallet sync from Settings to populate this queue.
+          {% endif %}
         </p>
       {% endif %}
     </section>
@@ -116,6 +140,29 @@
         cb.checked = source.checked;
       }
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const checkboxes = Array.from(document.querySelectorAll('input[name="entry_ids"]'));
+      const master = document.getElementById('select-all');
+      if (checkboxes.length) {
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+          cb.addEventListener('change', () => {
+            if (!master) {
+              return;
+            }
+            if (!cb.checked) {
+              master.checked = false;
+            } else if (checkboxes.every(box => box.checked)) {
+              master.checked = true;
+            }
+          });
+        });
+        if (master) {
+          master.checked = true;
+        }
+      }
+    });
   </script>
 </body>
 </html>

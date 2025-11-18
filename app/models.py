@@ -135,6 +135,11 @@ class EveCharacter(Base):
 
     user = relationship("AppUser", back_populates="characters")
     corp_links = relationship("EveCorpLink", back_populates="character")
+    wallet_sync_state = relationship(
+        "EsiWalletSyncState",
+        back_populates="character",
+        uselist=False,
+    )
 
 
 class EveCorporation(Base):
@@ -220,6 +225,11 @@ class EsiWalletSyncState(Base):
     corporation_id = Column(Integer, ForeignKey("eve_corporations.id"), nullable=True)
     division_id = Column(Integer, nullable=True)
     last_transaction_id = Column(BigInteger, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(32), nullable=True)
+    last_sync_message = Column(String(512), nullable=True)
+
+    character = relationship("EveCharacter", back_populates="wallet_sync_state")
 
 class EsiWalletQueueEntry(Base):
     __tablename__ = "esi_wallet_queue"

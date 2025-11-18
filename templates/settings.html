@@ -150,6 +150,7 @@
                 <th>Main / Trader</th>
                 <th>Scan buys</th>
                 <th>Scan sells</th>
+                <th>Last sync</th>
               </tr>
             </thead>
             <tbody>
@@ -176,11 +177,23 @@
                         {% if ch.wallet_scan_sells %}checked{% endif %}
                       >
                     </td>
+                    <td>
+                      {% set sync = ch.wallet_sync_state %}
+                      {% if sync and sync.last_sync_at %}
+                        <div>Last sync: {{ sync.last_sync_at }} UTC</div>
+                        <div class="help-text">
+                          Status: {{ sync.last_sync_status or 'unknown' }}
+                          {% if sync.last_sync_message %}<br>{{ sync.last_sync_message }}{% endif %}
+                        </div>
+                      {% else %}
+                        <span class="help-text">Last sync: never</span>
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               {% else %}
                 <tr>
-                  <td colspan="5" class="col-item">
+                  <td colspan="6" class="col-item">
                     No characters linked yet. Click "Connect EVE character" above.
                   </td>
                 </tr>

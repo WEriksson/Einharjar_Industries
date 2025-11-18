@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from .db import get_db
 from .models import EveCharacter, EveCorporation
@@ -17,7 +18,11 @@ async def settings_form(request: Request, db: AsyncSession = Depends(get_db)):
     settings = await get_or_create_settings(db)
 
     # These will be empty until we add SSO, but wiring them now is fine
-    res_chars = await db.execute(select(EveCharacter).order_by(EveCharacter.character_name))
+    res_chars = await db.execute(
+        select(EveCharacter)
+        .options(selectinload(EveCharacter.wallet_sync_state))
+        .order_by(EveCharacter.character_name)
+    )
     characters = res_chars.scalars().all()
 
     res_corps = await db.execute(select(EveCorporation).order_by(EveCorporation.corporation_name))
@@ -65,7 +70,11 @@ async def settings_save(
     if market_scan_interval_minutes and market_scan_interval_minutes > 0:
         settings.market_scan_interval_minutes = market_scan_interval_minutes
 
-    res_chars = await db.execute(select(EveCharacter).order_by(EveCharacter.character_name))
+    res_chars = await db.execute(
+        select(EveCharacter)
+        .options(selectinload(EveCharacter.wallet_sync_state))
+        .order_by(EveCharacter.character_name)
+    )
     characters = res_chars.scalars().all()
 
     for ch in characters:
