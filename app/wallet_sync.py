@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
@@ -23,23 +23,6 @@ from .esi_client import esi_get, get_or_create_item_from_type_id
 from .settings_service import get_or_create_settings
 
 router = APIRouter()
-
-
-async def _get_default_character(db: AsyncSession) -> EveCharacter:
-    """Return the default trader character, or first available character."""
-    stmt = select(EveCharacter).where(EveCharacter.is_default_trader == True)
-    res = await db.execute(stmt)
-    char = res.scalar_one_or_none()
-    if char:
-        return char
-
-    stmt2 = select(EveCharacter).order_by(EveCharacter.id.asc())
-    res2 = await db.execute(stmt2)
-    char2 = res2.scalar_one_or_none()
-    if char2:
-        return char2
-
-    raise HTTPException(status_code=400, detail="No EVE characters linked yet.")
 
 
 def _parse_eve_time(ts: str) -> datetime:
@@ -83,6 +66,105 @@ async def _save_wallet_sync_state(
         state.last_transaction_id = last_transaction_id
 
     await db.commit()
+
+
+async def _sync_wallet_for_character(
+    db: AsyncSession,
+    *,
+    character: EveCharacter,
+) -> Dict[str, Any]:
+    """Process wallet transactions for a single character respecting scan toggles."""
+
+    stats = {
+        "character_id": character.id,
+        "character_name": character.character_name,
+        "new_transactions": 0,
+        "queued_imports": 0,
+        "auto_sales": 0,
+        "unmatched_sale_units": 0,
+        "skipped_buys_disabled": 0,
+        "skipped_sells_disabled": 0,
+        "scanning_disabled": False,
+    }
+
+    if not character.wallet_scan_buys and not character.wallet_scan_sells:
+        stats["scanning_disabled"] = True
+        return stats
+
+    state = await _get_wallet_sync_state(db, character)
+    last_id = state.last_transaction_id if state else None
+
+    path = f"/latest/characters/{character.character_id}/wallet/transactions/"
+    tx_data = await esi_get(db, path, params=None, character=character, public=False)
+
+    if not isinstance(tx_data, list):
+        raise RuntimeError("Unexpected wallet transactions format from ESI")
+
+    txs = sorted(tx_data, key=lambda t: t.get("transaction_id", 0))
+
+    new_last_id = last_id or 0
+
+    for tx in txs:
+        tx_id = int(tx["transaction_id"])
+        if last_id is not None and tx_id <= last_id:
+            continue
+
+        qty = int(tx["quantity"])
+        if qty <= 0:
+            continue
+
+        is_buy = bool(tx["is_buy"])
+        type_id = int(tx["type_id"])
+        eve_time = _parse_eve_time(tx["date"])
+
+        item = await get_or_create_item_from_type_id(db, type_id)
+
+        if is_buy:
+            if not character.wallet_scan_buys:
+                stats["skipped_buys_disabled"] += 1
+                if tx_id > new_last_id:
+                    new_last_id = tx_id
+                continue
+
+            created = await _enqueue_wallet_tx(
+                db,
+                character=character,
+                tx=tx,
+                item=item,
+                eve_time=eve_time,
+            )
+            if created:
+                stats["queued_imports"] += 1
+                stats["new_transactions"] += 1
+        else:
+            if not character.wallet_scan_sells:
+                stats["skipped_sells_disabled"] += 1
+                if tx_id > new_last_id:
+                    new_last_id = tx_id
+                continue
+
+            sale_stats = await _record_sale_from_tx(
+                db,
+                character=character,
+                item=item,
+                qty=qty,
+                unit_price=float(tx["unit_price"]),
+                eve_time=eve_time,
+            )
+            stats["auto_sales"] += 1
+            stats["unmatched_sale_units"] += sale_stats["unmatched"]
+            stats["new_transactions"] += 1
+
+        if tx_id > new_last_id:
+            new_last_id = tx_id
+
+    progressed = last_id is None or new_last_id > last_id
+    if progressed:
+        await _save_wallet_sync_state(db, character, new_last_id, state)
+    else:
+        await db.commit()
+
+    return stats
 
 
 async def _record_import_from_tx(
@@ -194,92 +276,46 @@ async def _record_sale_from_tx(
 
 
 async def sync_character_wallet_once(db: AsyncSession) -> Dict[str, Any]:
-    """
-    Fetch recent wallet transactions for the default trader character.
+    """Fetch recent wallet transactions for every linked character."""
 
-    - New BUY transactions are queued into EsiWalletQueueEntry (direction='import').
-    - New SELL transactions are applied immediately as FIFO sales events.
-    """
-    char = await _get_default_character(db)
-    state = await _get_wallet_sync_state(db, char)
-    last_id = state.last_transaction_id if state else None
+    stmt = select(EveCharacter).order_by(
+        EveCharacter.is_default_trader.desc(),
+        EveCharacter.id.asc(),
+    )
+    res = await db.execute(stmt)
+    characters = res.scalars().all()
 
-    path = f"/latest/characters/{char.character_id}/wallet/transactions/"
-    tx_data = await esi_get(db, path, params=None, character=char, public=False)
+    if not characters:
+        raise HTTPException(status_code=400, detail="No EVE characters linked yet.")
 
-    if not isinstance(tx_data, list):
-        raise RuntimeError("Unexpected wallet transactions format from ESI")
+    per_character: List[Dict[str, Any]] = []
+    totals = {
+        "processed_characters": 0,
+        "synced_characters": 0,
+        "new_transactions": 0,
+        "queued_imports": 0,
+        "auto_sales": 0,
+        "unmatched_sale_units": 0,
+        "skipped_buys_disabled": 0,
+        "skipped_sells_disabled": 0,
+    }
 
-    # Oldest -> newest
-    txs = sorted(tx_data, key=lambda t: t.get("transaction_id", 0))
-
-    new_last_id = last_id or 0
-    new_tx_count = 0
-    queued_imports = 0
-    auto_sales = 0
-    unmatched_sales = 0
-
-    # We'll only need a batch when actually applying imports (in queue apply),
-    # so no batch here.
-    for tx in txs:
-        tx_id = int(tx["transaction_id"])
-        if last_id is not None and tx_id <= last_id:
-            continue  # already processed in a previous sync
-
-        qty = int(tx["quantity"])
-        if qty <= 0:
-            # Skip weird/no-quantity rows
-            continue
-
-        is_buy = bool(tx["is_buy"])
-        type_id = int(tx["type_id"])
-        date_str = tx["date"]
-        eve_time = _parse_eve_time(date_str)
-
-        # Resolve / create item
-        item = await get_or_create_item_from_type_id(db, type_id)
-
-        if is_buy:
-            # QUEUE imports (buys) for manual review
-            created = await _enqueue_wallet_tx(
-                db,
-                character=char,
-                tx=tx,
-                item=item,
-                eve_time=eve_time,
-            )
-            if created:
-                queued_imports += 1
-                new_tx_count += 1
-        else:
-            # APPLY sells immediately (FIFO out of inventory)
-            sale_stats = await _record_sale_from_tx(
-                db,
-                character=char,
-                item=item,
-                qty=qty,
-                unit_price=float(tx["unit_price"]),
-                eve_time=eve_time,
-            )
-            auto_sales += 1
-            unmatched_sales += sale_stats["unmatched"]
-            new_tx_count += 1
-
-        if tx_id > new_last_id:
-            new_last_id = tx_id
-
-    # Update last_transaction_id and commit
-    if new_tx_count > 0:
-        await _save_wallet_sync_state(db, char, new_last_id, state)
-    else:
-        await db.commit()
+    for ch in characters:
+        stats = await _sync_wallet_for_character(db, character=ch)
+        per_character.append(stats)
+        totals["processed_characters"] += 1
+        if not stats["scanning_disabled"]:
+            totals["synced_characters"] += 1
+        totals["new_transactions"] += stats["new_transactions"]
+        totals["queued_imports"] += stats["queued_imports"]
+        totals["auto_sales"] += stats["auto_sales"]
+        totals["unmatched_sale_units"] += stats["unmatched_sale_units"]
+        totals["skipped_buys_disabled"] += stats["skipped_buys_disabled"]
+        totals["skipped_sells_disabled"] += stats["skipped_sells_disabled"]
 
     return {
-        "character_name": char.character_name,
-        "new_transactions": new_tx_count,
-        "queued_imports": queued_imports,
-        "auto_sales": auto_sales,
-        "unmatched_sale_units": unmatched_sales,
+        "characters": per_character,
+        "totals": totals,
     }
 
 
@@ -332,7 +368,7 @@ async def _enqueue_wallet_tx(
     # No commit here; caller will commit
     return True
 
-@router.get("/wallet/sync-once", response_class=HTMLResponse)
+@router.api_route("/wallet/sync-once", methods=["GET", "POST"], response_class=HTMLResponse)
 async def wallet_sync_once(request: Request, db: AsyncSession = Depends(get_db)):
     stats = await sync_character_wallet_once(db)
 
@@ -344,17 +380,49 @@ async def wallet_sync_once(request: Request, db: AsyncSession = Depends(get_db))
     res_corps = await db.execute(select(EveCorporation).order_by(EveCorporation.corporation_name))
     corporations = res_corps.scalars().all()
 
-    if stats["new_transactions"] > 0:
-        msg_parts = [
-            f"Wallet sync for {stats['character_name']} processed {stats['new_transactions']} new transactions.",
-            f"Queued {stats['queued_imports']} buys for review.",
-            f"Automatically applied {stats['auto_sales']} sales.",
-        ]
-        if stats["unmatched_sale_units"] > 0:
-            msg_parts.append(f"{stats['unmatched_sale_units']} sale units had no matching inventory.")
-        msg = " ".join(msg_parts)
-    else:
-        msg = f"No new wallet transactions found for {stats['character_name']}."
+    totals = stats["totals"]
+    character_stats = stats["characters"]
+
+    msg_parts = [
+        (
+            f"Wallet sync ran for {totals['processed_characters']} characters "
+            f"({totals['synced_characters']} with scanning enabled)."
+        )
+    ]
+
+    for entry in character_stats:
+        name = entry["character_name"]
+        if entry["scanning_disabled"]:
+            msg_parts.append(
+                f"{name}: skipped because both 'Scan buys' and 'Scan sells' are disabled."
+            )
+            continue
+
+        line = []
+        if entry["new_transactions"] > 0:
+            line.append(
+                f"processed {entry['new_transactions']} new transactions "
+                f"({entry['queued_imports']} buys queued, {entry['auto_sales']} sales applied)"
+            )
+            if entry["unmatched_sale_units"] > 0:
+                line.append(
+                    f"{entry['unmatched_sale_units']} sale units had no matching inventory"
+                )
+        else:
+            line.append("no new transactions")
+
+        if entry["skipped_buys_disabled"]:
+            line.append(
+                f"skipped {entry['skipped_buys_disabled']} buy rows (Scan buys disabled)"
+            )
+        if entry["skipped_sells_disabled"]:
+            line.append(
+                f"skipped {entry['skipped_sells_disabled']} sell rows (Scan sells disabled)"
+            )
+
+        msg_parts.append(f"{name}: " + ", ".join(line) + ".")
+
+    msg = " ".join(msg_parts)
 
 
     return request.app.state.templates.TemplateResponse(

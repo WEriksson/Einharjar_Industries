@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from sqlalchemy import (
     Column,
     Integer,
@@ -9,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     UniqueConstraint,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -59,6 +62,17 @@ class InventoryLot(Base):
 
     item = relationship("Item", back_populates="lots")
     batch = relationship("ImportBatch", back_populates="lots")
+
+    @hybrid_property
+    def unit_total_cost(self) -> Decimal:
+        """Return per-unit total cost (unit_cost already includes shipping)."""
+        if self.unit_cost is None:
+            return Decimal("0")
+        return Decimal(str(self.unit_cost))
+
+    @unit_total_cost.expression
+    def unit_total_cost(cls):
+        return cls.unit_cost
 
 
 class InventoryEvent(Base):
@@ -115,6 +129,10 @@ class EveCharacter(Base):
     is_main = Column(Boolean, default=False)
     is_default_trader = Column(Boolean, default=False)
 
+    is_default_wallet = Column(Boolean, nullable=False, default=False)
+    wallet_scan_buys = Column(Boolean, nullable=False, default=True)
+    wallet_scan_sells = Column(Boolean, nullable=False, default=True)
+
     user = relationship("AppUser", back_populates="characters")
     corp_links = relationship("EveCorpLink", back_populates="character")
 
@@ -128,6 +146,9 @@ class EveCorporation(Base):
     id = Column(Integer, primary_key=True)
     corporation_id = Column(Integer, unique=True, index=True, nullable=False)
     corporation_name = Column(String, nullable=False)
+
+    wallet_scan_buys = Column(Boolean, nullable=False, default=True)
+    wallet_scan_sells = Column(Boolean, nullable=False, default=True)
 
     default_division_id = Column(Integer, nullable=True)
 

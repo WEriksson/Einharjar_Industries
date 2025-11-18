@@ -48,6 +48,8 @@ async def settings_save(
     jita_location_id: int | None = Form(None),
     market_scan_interval_minutes: int | None = Form(None),
 ):
+    form_data = await request.form()
+
     settings = await get_or_create_settings(db)
 
     settings.staging_system_id = staging_system_id
@@ -63,11 +65,18 @@ async def settings_save(
     if market_scan_interval_minutes and market_scan_interval_minutes > 0:
         settings.market_scan_interval_minutes = market_scan_interval_minutes
 
-    await db.commit()
-    await db.refresh(settings)
-
     res_chars = await db.execute(select(EveCharacter).order_by(EveCharacter.character_name))
     characters = res_chars.scalars().all()
+
+    for ch in characters:
+        buys_key = f"char_scan_buys_{ch.id}"
+        sells_key = f"char_scan_sells_{ch.id}"
+
+        ch.wallet_scan_buys = buys_key in form_data
+        ch.wallet_scan_sells = sells_key in form_data
+
+    await db.commit()
+    await db.refresh(settings)
 
     res_corps = await db.execute(select(EveCorporation).order_by(EveCorporation.corporation_name))
     corporations = res_corps.scalars().all()
@@ -80,6 +89,6 @@ async def settings_save(
             "characters": characters,
             "corporations": corporations,
             "current_page": "settings",
-            "message": "Settings saved.",
+            "message": "Settings saved (including wallet scan toggles).",
         },
     )

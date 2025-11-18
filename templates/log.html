@@ -24,26 +24,7 @@
       <h1>Import / Export log</h1>
       <p>All events are shown in EVE time (UTC).</p>
 
-      <div class="nav-buttons">
-  <a href="/" class="nav-button {% if current_page == 'imports' %}nav-button--accent{% endif %}">
-    Imports
-  </a>
-  <a href="/export" class="nav-button {% if current_page == 'export' %}nav-button--accent{% endif %}">
-    Export
-  </a>
-  <a href="/inventory" class="nav-button {% if current_page == 'inventory' %}nav-button--accent{% endif %}">
-    Inventory
-  </a>
-  <a href="/log" class="nav-button {% if current_page == 'log' %}nav-button--accent{% endif %}">
-    Import / export log
-  </a>
-  <a href="/settings" class="nav-button {% if current_page == 'settings' %}nav-button--accent{% endif %}">
-    Settings
-  </a>
-  <a href="/wallet/queue" class="nav-button {% if current_page == 'wallet_queue' %}nav-button--accent{% endif %}">
-    Wallet queue
-  </a>
-</div>
+      {% include "_nav.html" %}
 
 
     </header>
@@ -85,7 +66,7 @@
                   <td class="col-number">{{ ev.quantity }}</td>
                   <td class="col-number">
                     {% if ev.unit_price is not none %}
-                      {{ '{:,.2f}'.format(ev.unit_price) }}
+                      {{ ev.unit_price | isk }}
                     {% else %}
                       -
                     {% endif %}

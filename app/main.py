@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -9,12 +11,35 @@ from .exports import router as exports_router
 from .settings import router as settings_router
 from .auth import router as auth_router
 from .wallet_sync import router as wallet_router
+from .sell_planner import router as sell_planner_router
+
 
 
 
 app = FastAPI(title="EVE Market Tool v2")
 
+
+def format_isk(value, decimals=2):
+  """Format ISK amounts with spaces as thousands separators."""
+  if value is None:
+    value = Decimal(0)
+
+  try:
+    number = Decimal(str(value))
+  except (InvalidOperation, TypeError, ValueError):
+    return str(value)
+
+  try:
+    decimals_int = max(0, int(decimals))
+  except (TypeError, ValueError):
+    decimals_int = 2
+
+  formatted = f"{number:,.{decimals_int}f}"
+  return formatted.replace(",", " ")
+
+
 templates = Jinja2Templates(directory="templates")
+templates.env.filters["isk"] = format_isk
 app.state.templates = templates
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -26,6 +51,7 @@ app.include_router(log_router, tags=["log"])
 app.include_router(settings_router, tags=["settings"])
 app.include_router(auth_router, tags=["auth"])
 app.include_router(wallet_router, tags=["wallet"])
+app.include_router(sell_planner_router, tags=["sell_planner"])
 
 
 

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sell planner - EVE Market Tool v2</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Sell planner</h1>
+      <p>Plan sales from your inventory with correct cost basis and target profit after taxes/fees.</p>
+
+      {% include "_nav.html" %}
+
+    </header>
+
+    {% if message %}
+      <section class="card">
+        <p class="help-text">{{ message }}</p>
+      </section>
+    {% endif %}
+
+    <!-- Input form -->
+    <section class="card">
+      <h2>Plan a batch of sales</h2>
+      <p class="help-text">
+        Paste one item per line in the format:
+        <code>Item name&nbsp;&lt;TAB&gt;&nbsp;Quantity</code>. The tool will look at your
+        remaining inventory lots (FIFO), compute the ISK cost basis, and show the sell price
+        needed to hit your target profit after sales tax, SSC surcharge and broker's fee.
+      </p>
+
+      <form method="post" class="form-grid">
+        <div class="form-section" style="flex: 2;">
+          <div class="field">
+            <label class="field-label" for="raw_lines">Items to sell</label>
+            <textarea
+              id="raw_lines"
+              name="raw_lines"
+              class="textarea"
+              rows="10"
+              placeholder="Example:
+Stork[TAB]5
+Medium Ancillary Current Router II[TAB]12"
+            >{{ raw_lines }}</textarea>
+          </div>
+        </div>
+
+        <div class="form-section" style="flex: 1;">
+          <h3>Profit &amp; fees</h3>
+
+          <div class="field">
+            <label class="field-label" for="target_profit_percent">Target profit (%)</label>
+            <input
+              id="target_profit_percent"
+              name="target_profit_percent"
+              class="input"
+              type="number"
+              step="0.1"
+              value="{{ target_profit_percent }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="sales_tax_percent">Sales tax (%)</label>
+            <input
+              id="sales_tax_percent"
+              name="sales_tax_percent"
+              class="input"
+              type="number"
+              step="0.01"
+              value="{{ sales_tax_percent }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="ssc_surcharge_percent">SSC surcharge (%)</label>
+            <input
+              id="ssc_surcharge_percent"
+              name="ssc_surcharge_percent"
+              class="input"
+              type="number"
+              step="0.01"
+              value="{{ ssc_surcharge_percent }}"
+            >
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="broker_fee_percent">Broker's fee (%)</label>
+            <input
+              id="broker_fee_percent"
+              name="broker_fee_percent"
+              class="input"
+              type="number"
+              step="0.01"
+              value="{{ broker_fee_percent }}"
+            >
+          </div>
+
+          <button type="submit" class="primary-button" style="margin-top: 16px;">
+            Calculate sell prices
+          </button>
+        </div>
+      </form>
+    </section>
+
+    {% if summary %}
+      <section class="summary-grid" style="margin-top: 16px;">
+        <div class="summary-card">
+          <div class="summary-label">Total quantity</div>
+          <div class="summary-value">
+            {{ summary.total_qty }}
+          </div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total cost basis</div>
+          <div class="summary-value">
+            {{ summary.total_cost | isk }} ISK
+          </div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total sell value</div>
+          <div class="summary-value">
+            {{ summary.total_sell_value | isk }} ISK
+          </div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total profit (after fees)</div>
+          <div class="summary-value">
+            {{ summary.total_profit | isk }} ISK
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if results is not none %}
+      <section class="card" style="margin-top: 16px;">
+        <h2>Per-item breakdown</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="col-number">Requested</th>
+                <th class="col-number">Covered</th>
+                <th class="col-number">Available</th>
+                <th class="col-number">Avg cost / unit</th>
+                <th class="col-number">Total cost</th>
+                <th class="col-number">Req. ISK / unit</th>
+                <th class="col-number">Req. total ISK</th>
+                <th class="col-number">Profit (after fees)</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if results %}
+                {% for row in results %}
+                  <tr>
+                    <td class="col-item">{{ row.item_name }}</td>
+                    <td class="col-number">{{ row.requested_qty }}</td>
+                    <td class="col-number">{{ row.covered_qty }}</td>
+                    <td class="col-number">{{ row.available_qty }}</td>
+                    <td class="col-number">
+                      {% if row.avg_cost_per_unit is not none %}
+                        {{ row.avg_cost_per_unit | isk }}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="col-number">
+                      {% if row.total_cost is not none %}
+                        {{ row.total_cost | isk }}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="col-number">
+                      {% if row.required_unit_price is not none %}
+                        {{ row.required_unit_price | isk }}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="col-number">
+                      {% if row.required_total_price is not none %}
+                        {{ row.required_total_price | isk }}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="col-number">
+                      {% if row.profit_isk is not none %}
+                        {{ row.profit_isk | isk }}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="col-item">
+                      {{ row.note or "" }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="10" class="col-item">
+                    No items to show. Paste some lines above and click "Calculate sell prices".
+                  </td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</body>
+</html>
