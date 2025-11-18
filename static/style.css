@@ -227,6 +227,37 @@ body {
   font-weight: 600;
 }
 
+.nav-button--danger {
+  border-color: rgba(255, 120, 140, 0.8);
+  color: #ff90a6;
+  background: rgba(255, 120, 140, 0.12);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+}
+
+.nav-button--danger:hover {
+  background: rgba(255, 120, 140, 0.22);
+  color: #ffe6eb;
+}
+
+.nav-button--danger.is-armed {
+  background: rgba(255, 79, 110, 0.95);
+  color: #020308;
+  border-color: rgba(255, 79, 110, 1);
+}
+
+.nav-button--ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.nav-button--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
 
 
 /* Table */
@@ -256,6 +287,8 @@ body {
   padding: 7px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   white-space: nowrap;
+  letter-spacing: 0.08em;
+  text-align: center;
 }
 
 .data-table th {
@@ -263,7 +296,58 @@ body {
   font-size: 0.78rem;
   color: var(--text-soft);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status--green {
+  background: rgba(42, 193, 129, 0.18);
+  color: #2ac181;
+}
+
+.status--yellow {
+  background: rgba(255, 193, 7, 0.18);
+  color: #ffc107;
+}
+
+.status--red {
+  background: rgba(255, 83, 112, 0.2);
+  color: #ff5370;
+}
+
+.status--grey {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.col-actions {
+  width: 200px;
+}
+
+.fit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 200px;
+}
+
+.sr-only {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 
 /* Stronger zebra striping */
@@ -276,8 +360,10 @@ body {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(77, 210, 255, 0.18);
+  background: rgba(77, 210, 255, 0.25);
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.02);
 }
+
 
 .col-item {
   text-align: left;
@@ -285,7 +371,7 @@ body {
 }
 
 .col-number {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 

@@ -10,6 +10,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     UniqueConstraint,
+    Text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -29,6 +30,32 @@ class Item(Base):
     # NEW: backrefs for relationships in InventoryLot / InventoryEvent
     lots = relationship("InventoryLot", back_populates="item")
     events = relationship("InventoryEvent", back_populates="item")
+    watchlist_entries = relationship("WatchlistItem", back_populates="item")
+    fit_items = relationship("FitItem", back_populates="item")
+    market_orders = relationship("MarketOrder", back_populates="item")
+    eve_type = relationship(
+        "EveType",
+        primaryjoin="foreign(Item.eve_type_id) == EveType.type_id",
+        viewonly=True,
+    )
+
+
+class EveType(Base):
+    __tablename__ = "eve_types"
+
+    type_id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, index=True)
+    group_id = Column(Integer, nullable=True)
+    category_id = Column(Integer, nullable=True)
+    market_group_id = Column(Integer, nullable=True)
+    is_published = Column(Boolean, nullable=True)
+    volume_m3 = Column(Float, nullable=True)
+
+    items = relationship(
+        "Item",
+        primaryjoin="foreign(Item.eve_type_id) == EveType.type_id",
+        viewonly=True,
+    )
 
 
 
@@ -187,6 +214,7 @@ class AppSettings(Base):
     id = Column(Integer, primary_key=True)
 
     # Market / location settings
+    staging_region_id = Column(Integer, nullable=True)
     staging_system_id = Column(Integer, nullable=True)
     staging_system_name = Column(String, nullable=True)
 
@@ -267,3 +295,76 @@ class EsiWalletQueueEntry(Base):
             name="uq_wallet_queue_source_tx",
         ),
     )
+
+
+class Fit(Base):
+    __tablename__ = "fits"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    target_copies = Column(Integer, nullable=False, default=0)
+    eft_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    fit_items = relationship("FitItem", back_populates="fit", cascade="all, delete-orphan")
+
+
+class FitItem(Base):
+    __tablename__ = "fit_items"
+
+    id = Column(Integer, primary_key=True)
+    fit_id = Column(Integer, ForeignKey("fits.id"), nullable=False)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+    quantity_per_fit = Column(Integer, nullable=False)
+
+    fit = relationship("Fit", back_populates="fit_items")
+    item = relationship("Item", back_populates="fit_items")
+
+
+class WatchlistItem(Base):
+    __tablename__ = "watchlist_items"
+
+    id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False, unique=True)
+    note = Column(Text, nullable=True)
+    target_quantity = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    item = relationship("Item", back_populates="watchlist_entries")
+
+
+class MarketScan(Base):
+    __tablename__ = "market_scans"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    location_kind = Column(String, nullable=False)
+    region_id = Column(Integer, nullable=False)
+    system_id = Column(Integer, nullable=True)
+    location_id = Column(BigInteger, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    message = Column(String, nullable=True)
+
+    orders = relationship("MarketOrder", back_populates="scan", cascade="all, delete-orphan")
+
+
+class MarketOrder(Base):
+    __tablename__ = "market_orders"
+
+    id = Column(Integer, primary_key=True)
+    scan_id = Column(Integer, ForeignKey("market_scans.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+    is_buy_order = Column(Boolean, nullable=False)
+    price = Column(Float, nullable=False)
+    volume_remain = Column(BigInteger, nullable=True)
+    volume_total = Column(BigInteger, nullable=True)
+    issued_at = Column(DateTime, nullable=True)
+    duration = Column(Integer, nullable=True)
+    order_id = Column(BigInteger, nullable=False, index=True)
+    min_volume = Column(Integer, nullable=True)
+
+    scan = relationship("MarketScan", back_populates="orders")
+    item = relationship("Item", back_populates="market_orders")

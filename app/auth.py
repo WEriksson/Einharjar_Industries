@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 from urllib.parse import urlencode
@@ -11,15 +12,20 @@ from sqlalchemy import select
 from .db import get_db
 from .models import EveCharacter, EveCorporation, EveCorpLink
 from .settings_service import get_or_create_default_user
+from .esi_client import esi_get
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # --- Config from environment ---
 
 CLIENT_ID = os.getenv("EVE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("EVE_CLIENT_SECRET")
 CALLBACK_URL = os.getenv("EVE_CALLBACK_URL")
-SCOPES = os.getenv("EVE_SCOPES", "publicData")
+SCOPES = os.getenv(
+    "EVE_SCOPES",
+    "esi-wallet.read_character_wallet.v1",
+)
 
 if not CLIENT_ID or not CLIENT_SECRET or not CALLBACK_URL:
     # Fail fast so it's obvious something is missing
@@ -27,32 +33,39 @@ if not CLIENT_ID or not CLIENT_SECRET or not CALLBACK_URL:
 
 AUTH_URL = "https://login.eveonline.com/v2/oauth/authorize"
 TOKEN_URL = "https://login.eveonline.com/v2/oauth/token"
-VERIFY_URL = "https://esi.evetech.net/verify"
 
 
 # --- Helpers ---
 
-async def _fetch_character_corp_info(access_token: str, character_id: int) -> tuple[int | None, str | None]:
-    """Fetch corporation_id and name via public ESI endpoints."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        # Character info
-        r = await client.get(
-            f"https://esi.evetech.net/latest/characters/{character_id}/",
-            headers={"Authorization": f"Bearer {access_token}"},
+async def _fetch_character_corp_info(
+    db: AsyncSession,
+    access_token: str,
+    character_id: int,
+) -> tuple[int | None, str | None]:
+    """Fetch corporation info for a character without performing discovery."""
+
+    cdata = await esi_get(
+        db,
+        f"/latest/characters/{character_id}/",
+        character=None,
+        public=False,
+        access_token_override=access_token,
+        force_refresh=True,
+    )
+    corp_id = cdata.get("corporation_id")
+    corp_name = None
+
+    if corp_id is not None:
+        corp_resp = await esi_get(
+            db,
+            f"/latest/corporations/{corp_id}/",
+            character=None,
+            public=True,
+            force_refresh=True,
         )
-        r.raise_for_status()
-        cdata = r.json()
-        corp_id = cdata.get("corporation_id")
-        corp_name = None
+        corp_name = corp_resp.get("name")
 
-        if corp_id is not None:
-            r2 = await client.get(
-                f"https://esi.evetech.net/latest/corporations/{corp_id}/",
-            )
-            r2.raise_for_status()
-            corp_name = r2.json().get("name")
-
-        return corp_id, corp_name
+    return corp_id, corp_name
 
 
 # --- Routes ---
@@ -119,20 +132,23 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
             access_token = token_data["access_token"]
             refresh_token = token_data.get("refresh_token")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Token exchange failed: {e}")
+    except httpx.HTTPError as exc:
+        logger.error("Token exchange failed (status=%s)", getattr(exc.response, "status_code", "n/a"))
+        raise HTTPException(status_code=400, detail="Token exchange failed.") from exc
 
     # Verify token to get character info
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            verify_resp = await client.get(
-                VERIFY_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            verify_resp.raise_for_status()
-            v = verify_resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Verify call failed: {e}")
+        v = await esi_get(
+            db,
+            "/verify",
+            character=None,
+            public=False,
+            access_token_override=access_token,
+            force_refresh=True,
+        )
+    except Exception as exc:
+        logger.error("Verify call failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Verify call failed.") from exc
 
     character_id = int(v["CharacterID"])
     character_name = v["CharacterName"]
@@ -140,7 +156,7 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     owner_hash = v.get("CharacterOwnerHash")
 
     # Fetch corp info via ESI
-    corp_id, corp_name = await _fetch_character_corp_info(access_token, character_id)
+    corp_id, corp_name = await _fetch_character_corp_info(db, access_token, character_id)
 
     # Attach to default local user
     user = await get_or_create_default_user(db)
@@ -152,7 +168,11 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     if char is None:
         # Is this the first character for this user?
-        res_all = await db.execute(select(EveCharacter).where(EveCharacter.user_id == user.id))
+        res_all = await db.execute(
+            select(EveCharacter.id)
+            .where(EveCharacter.user_id == user.id)
+            .limit(1)
+        )
         has_any = res_all.scalar_one_or_none() is not None
 
         char = EveCharacter(

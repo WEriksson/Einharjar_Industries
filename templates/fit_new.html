@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>New fit - Einharjar Industries</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>New fit</h1>
+      <p>Paste an EFT fit and the name + items will be captured automatically.</p>
+
+      {% include "_nav.html" %}
+
+    </header>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>EFT input</h2>
+          <p class="help-text">Only the EFT text is required. The name is derived from the header.</p>
+        </div>
+      </div>
+
+      {% if error %}
+        <div class="flash flash-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/fits/new" class="stack gap-md">
+        <div class="field">
+          <label class="field-label" for="eft_text">EFT fit text</label>
+          <textarea id="eft_text" name="eft_text" class="input" rows="12" required>{{ form_values.eft_text }}</textarea>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label" for="target_copies">Target copies (optional)</label>
+            <input
+              id="target_copies"
+              name="target_copies"
+              type="number"
+              class="input"
+              min="0"
+              value="{{ form_values.target_copies }}"
+            >
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-button">Create fit</button>
+          <a href="/fits" class="nav-button">Cancel</a>
+        </div>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

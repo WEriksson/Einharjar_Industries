@@ -45,6 +45,7 @@ async def settings_form(request: Request, db: AsyncSession = Depends(get_db)):
 async def settings_save(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    staging_region_id: int | None = Form(None),
     staging_system_id: int | None = Form(None),
     staging_system_name: str | None = Form(None),
     staging_structure_id: int | None = Form(None),
@@ -57,6 +58,7 @@ async def settings_save(
 
     settings = await get_or_create_settings(db)
 
+    settings.staging_region_id = staging_region_id
     settings.staging_system_id = staging_system_id
     settings.staging_system_name = staging_system_name or None
     settings.staging_structure_id = staging_structure_id

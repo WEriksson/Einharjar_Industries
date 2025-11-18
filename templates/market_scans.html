@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Market scans - Einharjar Industries</title>
+  <link rel="stylesheet" href="/static/style.css">
+
+  <style>
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .summary-card {
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .summary-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.7;
+    }
+
+    .summary-value {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .summary-sub {
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    .flash-message {
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(34, 139, 230, 0.15);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Market scans</h1>
+      <p>Manual snapshots of market orders for your fit items in staging and Jita station.</p>
+
+      {% include "_nav.html" %}
+
+      {% if flash_message %}
+        <div class="flash-message">{{ flash_message }}</div>
+      {% endif %}
+    </header>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Latest scans</h2>
+          <p class="help-text">Tracks the most recent staging structure and Jita station capture.</p>
+        </div>
+      </div>
+
+      {% if not has_fit_items %}
+        <p class="help-text" style="margin-top: 8px;">No fit items found yet. Create a fit with items before running scans.</p>
+      {% endif %}
+
+      <div class="summary-stats">
+        <div class="summary-card">
+          <div class="summary-label">Staging structure</div>
+          <div class="summary-value">
+            {% if staging_scan %}
+              {{ staging_scan.status|capitalize }}
+            {% else %}
+              Never
+            {% endif %}
+          </div>
+          <div class="summary-sub">
+            {% if staging_scan %}
+              {{ staging_scan.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
+            {% else %}
+              No scans recorded yet
+            {% endif %}
+          </div>
+          <div class="summary-sub">
+            {% if staging_scan and staging_scan.message %}
+              {{ staging_scan.message }}
+            {% else %}
+              Ready to capture structure orders for fit items.
+            {% endif %}
+          </div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Jita 4-4 station</div>
+          <div class="summary-value">
+            {% if jita_scan %}
+              {{ jita_scan.status|capitalize }}
+            {% else %}
+              Never
+            {% endif %}
+          </div>
+          <div class="summary-sub">
+            {% if jita_scan %}
+              {{ jita_scan.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
+            {% else %}
+              No scans recorded yet
+            {% endif %}
+          </div>
+          <div class="summary-sub">
+            {% if jita_scan and jita_scan.message %}
+              {{ jita_scan.message }}
+            {% else %}
+              Captures buy/sell orders filtered to your configured Jita station.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Manual scan</h2>
+          <p class="help-text">
+            Executes both staging and Jita pulls immediately. Later steps can automate this, but for now it is a manual trigger.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="/market/scans/run" class="stack gap-md">
+        <button type="submit" class="primary-button" {% if not has_fit_items %}disabled{% endif %}>
+          Run market scan now
+        </button>
+        {% if not has_fit_items %}
+          <p class="help-text">Add at least one fit item to enable scanning.</p>
+        {% endif %}
+      </form>
+    </section>
+  </div>
+</body>
+</html>

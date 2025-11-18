@@ -47,6 +47,17 @@
             </div>
 
             <div class="field">
+              <label class="field-label" for="staging_region_id">Staging region ID</label>
+              <input
+                id="staging_region_id"
+                name="staging_region_id"
+                class="input"
+                type="number"
+                value="{{ settings.staging_region_id or '' }}"
+              >
+            </div>
+
+            <div class="field">
               <label class="field-label" for="staging_system_name">Staging system name (optional)</label>
               <input
                 id="staging_system_name"

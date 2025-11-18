@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fits & Watchlist - Einharjar Industries</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Fits &amp; Watchlist</h1>
+      <p>Track doctrine fits and standalone watchlist items you want to keep stocked.</p>
+
+      {% include "_nav.html" %}
+
+    </header>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Saved fits</h2>
+          <p class="help-text">Availability combines your stock with the latest staging scan.</p>
+        </div>
+        <div>
+          <a href="/fits/new" class="primary-button">New fit</a>
+        </div>
+      </div>
+
+      {% if fits %}
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-item">Name</th>
+                <th class="col-number">Target</th>
+                <th class="col-number">Available</th>
+                <th class="col-number">My stock</th>
+                <th class="col-number">Staging price</th>
+                <th class="col-number">Jita sell price</th>
+                <th>Status</th>
+                <th class="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for fit in fits %}
+                {% set summary = availability_summaries.get(fit.id) %}
+                {% set status_class = 'status status--grey' %}
+                {% if summary %}
+                  {% if summary.status_category in ['stock', 'market'] %}
+                    {% set status_class = 'status status--green' %}
+                  {% elif summary.status_category == 'short' %}
+                    {% set status_class = 'status status--red' %}
+                  {% else %}
+                    {% set status_class = 'status status--grey' %}
+                  {% endif %}
+                {% endif %}
+                <tr>
+                  <td class="col-item">{{ fit.name }}</td>
+                  <td class="col-number">{{ fit.target_copies }}</td>
+                  <td class="col-number">{{ summary.total_copies_possible if summary else 0 }}</td>
+                  <td class="col-number">{{ summary.my_stock_copies if summary else 0 }}</td>
+                  <td class="col-number">
+                    {% if summary and summary.staging_price_per_fit is not none %}
+                      {{ summary.staging_price_per_fit | isk }} ISK
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td class="col-number">
+                    {% if summary and summary.jita_price_per_fit is not none %}
+                      {{ summary.jita_price_per_fit | isk }} ISK
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td><span class="{{ status_class }}">{{ summary.status if summary else ('Inactive' if not fit.is_active else 'No data') }}</span></td>
+                  <td class="fit-actions">
+                    {% if fit.eft_text %}
+                      <button
+                        type="button"
+                        class="nav-button nav-button--ghost copy-eft"
+                        data-eid="fit-eft-{{ fit.id }}"
+                      >Copy EFT</button>
+                      <textarea id="fit-eft-{{ fit.id }}" class="sr-only">{{ fit.eft_text }}</textarea>
+                    {% endif %}
+                    <a href="/fits/{{ fit.id }}" class="nav-button">View</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">No fits saved yet. Use "New fit" to create one.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Watchlist</h2>
+          <p class="help-text">Standalone items you want to keep tabs on.</p>
+        </div>
+      </div>
+
+      {% if watchlist %}
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Target quantity</th>
+                <th>Note</th>
+                <th>Status</th>
+                <th style="width: 80px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in watchlist %}
+                <tr>
+                  <td>
+                    {{ entry.item.name if entry.item else 'Item #' ~ entry.item_id }}
+                  </td>
+                  <td>{{ entry.target_quantity }}</td>
+                  <td>{{ entry.note or '-' }}</td>
+                  <td>{{ 'Active' if entry.is_active else 'Inactive' }}</td>
+                  <td>
+                    {% if entry.is_active %}
+                      <form method="post" action="/watchlist/{{ entry.id }}/deactivate">
+                        <button type="submit" class="nav-button">Deactivate</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">No watchlist entries yet.</p>
+      {% endif %}
+
+      <hr style="margin: 24px 0;">
+      <form method="post" action="/watchlist/add" class="stack gap-md">
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label" for="watch_item_id">Item ID</label>
+            <input id="watch_item_id" name="item_id" type="number" class="input" required>
+          </div>
+          <div class="field">
+            <label class="field-label" for="watch_target">Target quantity</label>
+            <input id="watch_target" name="target_quantity" type="number" class="input" min="0" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="watch_note">Note</label>
+          <textarea id="watch_note" name="note" class="input" rows="2"></textarea>
+        </div>
+        <label class="field-checkbox">
+          <input type="checkbox" name="is_active" value="1" checked>
+          <span>Active</span>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary-button">Save watchlist entry</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const buttons = document.querySelectorAll('.copy-eft');
+      if (!navigator.clipboard || !buttons.length) {
+        return;
+      }
+      buttons.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const targetId = btn.getAttribute('data-eid');
+          const source = document.getElementById(targetId);
+          if (!source) {
+            return;
+          }
+          const text = source.value || source.textContent || '';
+          try {
+            await navigator.clipboard.writeText(text.trim());
+            btn.textContent = 'Copied!';
+            setTimeout(() => {
+              btn.textContent = 'Copy EFT';
+            }, 1500);
+          } catch (err) {
+            console.error('Clipboard copy failed', err);
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

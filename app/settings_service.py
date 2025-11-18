@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from datetime import datetime
 
 from .models import AppSettings, AppUser
@@ -20,6 +20,13 @@ async def get_or_create_default_user(db: AsyncSession) -> AppUser:
 
 
 async def get_or_create_settings(db: AsyncSession) -> AppSettings:
+    # Ensure new columns exist for older databases
+    await db.execute(text("""
+        ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS staging_region_id INTEGER
+    """))
+    await db.commit()
+
     stmt = select(AppSettings).where(AppSettings.id == 1)
     res = await db.execute(stmt)
     s = res.scalar_one_or_none()

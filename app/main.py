@@ -12,6 +12,8 @@ from .settings import router as settings_router
 from .auth import router as auth_router
 from .wallet_sync import router as wallet_router
 from .sell_planner import router as sell_planner_router
+from .fits import router as fits_router
+from .market_scan import router as market_scan_router
 
 
 
@@ -52,6 +54,8 @@ app.include_router(settings_router, tags=["settings"])
 app.include_router(auth_router, tags=["auth"])
 app.include_router(wallet_router, tags=["wallet"])
 app.include_router(sell_planner_router, tags=["sell_planner"])
+app.include_router(fits_router, tags=["fits"])
+app.include_router(market_scan_router, tags=["market_scans"])
 
 
 

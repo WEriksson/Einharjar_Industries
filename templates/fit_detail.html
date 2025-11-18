@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ fit.name }} - Fit detail</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>{{ fit.name }}</h1>
+      <p>Availability combines FIFO inventory with the latest staging and Jita scans.</p>
+
+      {% include "_nav.html" %}
+
+    </header>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Availability overview</h2>
+          <p class="help-text">Status: {{ availability_summary.status }}</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <a href="/fits" class="nav-button">Back to fits</a>
+          <a href="/fits/{{ fit.id }}#manage" class="nav-button">Manage fit</a>
+          <form method="post" action="/fits/{{ fit.id }}/delete" style="margin:0;" class="confirm-submit-form">
+            <button
+              type="button"
+              class="nav-button nav-button--danger js-confirm-submit"
+              data-default-label="Delete fit"
+              data-confirm-label="Click again to delete"
+            >Delete fit</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="summary-stats">
+        <div class="summary-card">
+          <div class="summary-label">Hull</div>
+          <div class="summary-value">{{ hull_name or '-' }}</div>
+          <div class="summary-sub">{{ 'Active' if fit.is_active else 'Inactive' }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Target copies</div>
+          <form method="post" action="/fits/{{ fit.id }}/target" class="summary-target-form">
+            <input
+              type="number"
+              name="target_copies"
+              min="0"
+              value="{{ availability_summary.target_copies }}"
+              class="input"
+              style="max-width:110px;"
+            >
+            <button type="submit" class="nav-button" style="margin-left:6px;">Save</button>
+          </form>
+          <div class="summary-sub">Desired copies of this fit</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">My stock copies</div>
+          <div class="summary-value">{{ availability_summary.my_stock_copies }}</div>
+          <div class="summary-sub">From FIFO inventory</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Market copies</div>
+          <div class="summary-value">{{ availability_summary.staging_copies }}</div>
+          <div class="summary-sub">From latest staging scan</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Total available</div>
+          <div class="summary-value">{{ availability_summary.total_copies_possible }}</div>
+          <div class="summary-sub">Stock + staging</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Price estimates</div>
+          <div class="summary-sub">
+            Staging:
+            {% if availability_summary.staging_price_per_fit is not none %}
+              {{ availability_summary.staging_price_per_fit | isk }} ISK
+            {% else %}
+              -
+            {% endif %}
+          </div>
+          <div class="summary-sub" style="margin-top:4px;">
+            Jita sell price:
+            {% if availability_summary.jita_price_per_fit is not none %}
+              {{ availability_summary.jita_price_per_fit | isk }} ISK
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="scan-meta" style="margin-top:16px;display:flex;gap:24px;flex-wrap:wrap;">
+        <div>
+          <strong>Staging scan:</strong>
+          {% if availability_summary.latest_staging_scan %}
+            {{ availability_summary.latest_staging_scan.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}
+            Never
+          {% endif %}
+        </div>
+        <div>
+          <strong>Jita scan:</strong>
+          {% if availability_summary.latest_jita_scan %}
+            {{ availability_summary.latest_jita_scan.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}
+            Never
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Per-item availability</h2>
+          <p class="help-text">Deficit compares target copies against your inventory only.</p>
+        </div>
+      </div>
+
+      {% if item_rows %}
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Required / fit</th>
+                <th>Inventory qty</th>
+                <th>Staging qty</th>
+                <th>Staging min price</th>
+                <th>Jita sell price</th>
+                <th>Deficit vs target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in item_rows %}
+                <tr>
+                  <td>{{ row.item.name }}</td>
+                  <td>{{ row.required_per_fit }}</td>
+                  <td>{{ row.inventory_qty }}</td>
+                  <td>{{ row.staging_market_qty }}</td>
+                  <td>
+                    {% if row.staging_min_price is not none %}
+                      {{ row.staging_min_price | isk }} ISK
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.jita_min_price is not none %}
+                      {{ row.jita_min_price | isk }} ISK
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if availability_summary.target_copies > 0 %}
+                      {{ row.deficit_for_target }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">This fit has no items yet. Import an EFT fit to populate it.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" id="manage">
+      <div class="card-header">
+        <div>
+          <h2>Manage fit items</h2>
+          <p class="help-text">Use these tools to adjust or re-import the fit without leaving the page.</p>
+        </div>
+      </div>
+
+      <details class="collapsible" style="margin-bottom:16px;">
+        <summary class="field-label" style="cursor:pointer;">Fit settings</summary>
+        <form method="post" action="/fits/{{ fit.id }}/edit" class="stack gap-md" style="margin-top:8px;">
+          <div class="field">
+            <label class="field-label" for="fit_name">Name</label>
+            <input id="fit_name" name="name" type="text" class="input" value="{{ fit.name }}" required>
+          </div>
+          <input type="hidden" name="target_copies" value="{{ availability_summary.target_copies }}">
+          <label class="field-checkbox">
+            <input type="checkbox" name="is_active" value="1" {% if fit.is_active %}checked{% endif %}>
+            <span>Active</span>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="nav-button">Save settings</button>
+          </div>
+        </form>
+      </details>
+
+      <details class="collapsible" style="margin-bottom:16px;">
+        <summary class="field-label" style="cursor:pointer;">Re-import EFT</summary>
+        <p class="help-text">Paste EFT text to replace or grow this fit. Existing items will be incremented.</p>
+        <form method="post" action="/fits/{{ fit.id }}/import-eft" class="stack gap-md" style="margin-top:8px;">
+          <textarea name="eft_text" class="input" rows="8" required></textarea>
+          <div class="form-actions">
+            <button type="submit" class="primary-button">Import EFT</button>
+          </div>
+        </form>
+      </details>
+
+      <details class="collapsible" style="margin-bottom:16px;">
+        <summary class="field-label" style="cursor:pointer;">Add individual item</summary>
+        <form method="post" action="/fits/{{ fit.id }}/items/add" class="form-grid" style="margin-top:8px;">
+          <div class="field">
+            <label class="field-label" for="fit_item_id">Item ID</label>
+            <input id="fit_item_id" name="item_id" type="number" class="input" required>
+          </div>
+          <div class="field">
+            <label class="field-label" for="fit_item_qty">Quantity per fit</label>
+            <input id="fit_item_qty" name="quantity_per_fit" type="number" class="input" min="1" value="1" required>
+          </div>
+          <div class="form-actions" style="grid-column:1 / -1;">
+            <button type="submit" class="nav-button">Add item</button>
+          </div>
+        </form>
+      </details>
+
+      {% if fit.fit_items %}
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Item ID</th>
+                <th>Quantity / fit</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for fi in fit.fit_items %}
+                <tr>
+                  <td>{{ fi.item.name if fi.item else 'Item #' ~ fi.item_id }}</td>
+                  <td>{{ fi.item_id }}</td>
+                  <td>{{ fi.quantity_per_fit }}</td>
+                  <td>
+                    <form method="post" action="/fits/{{ fit.id }}/items/{{ fi.id }}/delete">
+                      <button type="submit" class="nav-button">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="help-text">No individual items yet.</p>
+      {% endif %}
+    </section>
+  </div>
+  <script>
+    (function () {
+      const forms = document.querySelectorAll('.confirm-submit-form');
+      forms.forEach((form) => {
+        const button = form.querySelector('.js-confirm-submit');
+        if (!button) {
+          return;
+        }
+        const defaultLabel = button.getAttribute('data-default-label') || button.textContent.trim();
+        const confirmLabel = button.getAttribute('data-confirm-label') || 'Confirm';
+        let timeoutId;
+        button.addEventListener('click', () => {
+          if (button.dataset.armed === 'true') {
+            form.submit();
+            return;
+          }
+          button.dataset.armed = 'true';
+          button.textContent = confirmLabel;
+          button.classList.add('is-armed');
+          clearTimeout(timeoutId);
+          timeoutId = window.setTimeout(() => {
+            button.dataset.armed = 'false';
+            button.textContent = defaultLabel;
+            button.classList.remove('is-armed');
+          }, 4000);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

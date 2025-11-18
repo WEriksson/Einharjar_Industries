@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Dict
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from .db import get_db, Base, engine
+from .eve_types_service import apply_eve_type_data_to_items
 from .models import Item, ImportBatch
 from .utils_parsing import parse_transactions, aggregate_by_item, parse_janice_rows
 from .inventory_service import create_lot_from_import
@@ -69,6 +71,8 @@ async def handle_import(
         db.add(batch)
         await db.flush()
 
+        items_needing_type: Dict[str, Item] = {}
+
         for tx in txs:
             item_name = tx["item_name"]
             qty = tx["qty"]
@@ -87,6 +91,9 @@ async def handle_import(
                 db.add(item)
                 await db.flush()
 
+            if not item.eve_type_id or (item.volume_m3 is None or item.volume_m3 == 0):
+                items_needing_type[item_name] = item
+
             # EVE time from wallet line; fall back to now if missing
             tx_time = tx.get("time")
             if tx_time is None:
@@ -104,6 +111,9 @@ async def handle_import(
                 batch=batch,
                 note="Manual import",
             )
+
+        if items_needing_type:
+            await apply_eve_type_data_to_items(db, items_needing_type)
 
         await db.commit()
 
@@ -141,6 +151,7 @@ async def handle_import_janice(
         )
 
     batch = None
+    items_needing_type: Dict[str, Item] = {}
     if save_to_inventory:
         batch = ImportBatch(created_at=datetime.utcnow(), note=f"Janice import ({price_source})")
         db.add(batch)
@@ -172,6 +183,9 @@ async def handle_import_janice(
             if item.volume_m3 is None:
                 item.volume_m3 = r["unit_volume"]
 
+        if not item.eve_type_id or (item.volume_m3 is None or item.volume_m3 == 0):
+            items_needing_type[item_name] = item
+
         # create lot + event
         if save_to_inventory:
             dt_now = datetime.utcnow()
@@ -196,6 +210,9 @@ async def handle_import_janice(
                 "total_cost": total_cost,
             }
         )
+
+    if items_needing_type:
+        await apply_eve_type_data_to_items(db, items_needing_type)
 
     if save_to_inventory:
         await db.commit()
