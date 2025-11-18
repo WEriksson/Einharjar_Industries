@@ -30,6 +30,11 @@ def parse_eft_fit(eft_text: str) -> Dict[str, int]:
         if not line:
             continue
 
+        if line.endswith("/offline"):
+            line = line[: -len("/offline")].strip()
+            if not line:
+                continue
+
         if not header_consumed:
             header_consumed = True
             if line.startswith("[") and "]" in line:
@@ -44,18 +49,23 @@ def parse_eft_fit(eft_text: str) -> Dict[str, int]:
         if line.startswith("[") and line.endswith("]"):
             continue
 
-        quantity = 1
-        item_name = line
-        if " x" in line:
-            maybe_name, maybe_qty = line.rsplit(" x", 1)
-            if maybe_qty.strip().isdigit():
-                item_name = maybe_name.strip()
-                quantity = int(maybe_qty.strip())
-
-        item_name = item_name.strip()
-        if not item_name:
+        segments = [seg.strip() for seg in line.split(",") if seg.strip()]
+        if not segments:
             continue
-        items[item_name] = items.get(item_name, 0) + quantity
+
+        for segment in segments:
+            quantity = 1
+            item_name = segment
+            if " x" in segment:
+                maybe_name, maybe_qty = segment.rsplit(" x", 1)
+                if maybe_qty.strip().isdigit():
+                    item_name = maybe_name.strip()
+                    quantity = int(maybe_qty.strip())
+
+            item_name = item_name.strip()
+            if not item_name:
+                continue
+            items[item_name] = items.get(item_name, 0) + quantity
 
     return items
 

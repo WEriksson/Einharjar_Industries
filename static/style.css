@@ -267,6 +267,16 @@ body {
   margin-top: 10px;
 }
 
+.table-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
+.table-controls .input {
+  max-width: 260px;
+}
+
 .data-table {
   width: 100%;
   border-collapse: separate;
@@ -289,6 +299,24 @@ body {
   white-space: nowrap;
   letter-spacing: 0.08em;
   text-align: center;
+}
+
+.data-table th[data-sort-key] {
+  cursor: pointer;
+  position: relative;
+}
+
+.data-table th[data-sort-direction="asc"]::after {
+  content: "▲";
+}
+
+.data-table th[data-sort-direction="desc"]::after {
+  content: "▼";
+}
+
+.data-table th[data-sort-direction]::after {
+  font-size: 0.65rem;
+  margin-left: 4px;
 }
 
 .data-table th {
@@ -342,6 +370,10 @@ body {
   min-width: 200px;
 }
 
+.fit-row.is-hidden {
+  display: none;
+}
+
 .sr-only {
   position: absolute;
   left: -9999px;
@@ -366,7 +398,7 @@ body {
 
 
 .col-item {
-  text-align: left;
+  text-align: left !important;
   font-weight: 500;
 }
 

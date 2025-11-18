@@ -5,7 +5,7 @@ from typing import Dict, Iterable, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import EveType, Item
+from .models import EveType, Item, FitItem
 
 
 def _clean_name(name: Optional[str]) -> Optional[str]:
@@ -93,14 +93,35 @@ async def apply_eve_type_data_to_items(db: AsyncSession, items_by_name: Dict[str
     if not name_to_type_id:
         return
 
-    type_rows = await fetch_eve_types_by_ids(db, set(name_to_type_id.values()))
+    type_ids = set(name_to_type_id.values())
+    type_rows = await fetch_eve_types_by_ids(db, type_ids)
+
+    existing_items_by_type: Dict[int, Item] = {}
+    if type_ids:
+        stmt_items = select(Item).where(Item.eve_type_id.in_(type_ids))
+        res_items = await db.execute(stmt_items)
+        for existing_item in res_items.scalars():
+            if existing_item.eve_type_id is not None:
+                existing_items_by_type[int(existing_item.eve_type_id)] = existing_item
 
     for name, item in items_by_name.items():
         type_id = name_to_type_id.get(name)
         if not type_id:
             continue
+        existing = existing_items_by_type.get(type_id)
+        if existing and existing.id != item.id:
+            # Reuse the canonical item; move fit items over and drop the duplicate placeholder.
+            stmt_fit_items = select(FitItem).where(FitItem.item_id == item.id)
+            res_fit_items = await db.execute(stmt_fit_items)
+            for fit_item in res_fit_items.scalars():
+                fit_item.item_id = existing.id
+                fit_item.item = existing
+            await db.delete(item)
+            items_by_name[name] = existing
+            continue
         if not item.eve_type_id:
             item.eve_type_id = type_id
+            existing_items_by_type[type_id] = item
         evetype = type_rows.get(type_id)
         if evetype and (item.volume_m3 is None or item.volume_m3 == 0):
             item.volume_m3 = evetype.volume_m3

@@ -39,6 +39,7 @@ class FitAvailabilitySummary:
     jita_price_per_fit: Optional[Decimal]
     status: str
     status_category: str
+    hull_name: Optional[str]
     latest_staging_scan: Optional[MarketScan]
     latest_jita_scan: Optional[MarketScan]
 
@@ -76,7 +77,7 @@ class _FitAvailabilityData:
         fit_ids = [fit.id for fit in fits]
         stmt = (
             select(FitItem)
-            .options(selectinload(FitItem.item))
+            .options(selectinload(FitItem.item).selectinload(Item.eve_type))
             .where(FitItem.fit_id.in_(fit_ids))
         )
         res = await db.execute(stmt)
@@ -161,14 +162,26 @@ class _FitAvailabilityData:
         return rows
 
 
-def _calculate_status(target: int, stock: int, market: int) -> tuple[str, str]:
+def _infer_hull_name(rows: List[FitItemAvailabilityRow]) -> Optional[str]:
+    for row in rows:
+        eve_type = getattr(row.item, "eve_type", None)
+        if eve_type and getattr(eve_type, "category_id", None) == 6:
+            return row.item.name
+    for row in rows:
+        if row.required_per_fit == 1:
+            return row.item.name
+    return None
+
+
+def _determine_status(target: int, total: int) -> tuple[str, str]:
     if target <= 0:
-        return "No target", "none"
-    if stock >= target:
-        return "OK", "stock"
-    if stock + market >= target:
-        return "OK", "market"
-    return (f"Short ({stock + market}/{target})", "short")
+        return "No target", "grey"
+    ratio = f"{total}/{target}"
+    if total <= 0:
+        return f"Out ({ratio})", "red"
+    if total < target:
+        return f"Low ({ratio})", "yellow"
+    return f"Good ({ratio})", "green"
 
 
 async def compute_fit_availability_summaries(
@@ -214,13 +227,13 @@ def _build_summary_for_fit(fit: Fit, data: _FitAvailabilityData) -> FitAvailabil
     staging_price = _aggregate_price(rows, source="staging")
     jita_price = _aggregate_price(rows, source="jita")
 
-    status, status_category = _calculate_status(
-        fit.target_copies or 0, my_stock_copies, staging_copies
-    )
+    target = fit.target_copies or 0
+    status, status_category = _determine_status(target, total_copies_possible)
+    hull_name = _infer_hull_name(rows)
 
     return FitAvailabilitySummary(
         fit=fit,
-        target_copies=fit.target_copies or 0,
+        target_copies=target,
         my_stock_copies=my_stock_copies,
         staging_copies=staging_copies,
         total_copies_possible=total_copies_possible,
@@ -228,6 +241,7 @@ def _build_summary_for_fit(fit: Fit, data: _FitAvailabilityData) -> FitAvailabil
         jita_price_per_fit=jita_price,
         status=status,
         status_category=status_category,
+        hull_name=hull_name,
         latest_staging_scan=data.latest_staging_scan,
         latest_jita_scan=data.latest_jita_scan,
     )

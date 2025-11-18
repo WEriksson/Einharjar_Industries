@@ -27,35 +27,50 @@
       </div>
 
       {% if fits %}
+        <div class="table-controls">
+          <input type="search" id="fit-search" class="input" placeholder="Search by fit or ship name">
+        </div>
         <div class="table-wrapper">
-          <table class="data-table">
+          <table class="data-table" id="fits-table">
             <thead>
               <tr>
-                <th class="col-item">Name</th>
-                <th class="col-number">Target</th>
-                <th class="col-number">Available</th>
-                <th class="col-number">My stock</th>
-                <th class="col-number">Staging price</th>
-                <th class="col-number">Jita sell price</th>
-                <th>Status</th>
+                <th class="col-item" data-sort-key="name" data-sort-type="text">Name</th>
+                <th class="col-item" data-sort-key="ship" data-sort-type="text">Ship</th>
+                <th class="col-number" data-sort-key="target" data-sort-type="number">Target</th>
+                <th class="col-number" data-sort-key="available" data-sort-type="number">Available</th>
+                <th class="col-number" data-sort-key="stock" data-sort-type="number">My stock</th>
+                <th class="col-number" data-sort-key="staging" data-sort-type="number">Staging price</th>
+                <th class="col-number" data-sort-key="jita" data-sort-type="number">Jita sell price</th>
+                <th data-sort-key="status" data-sort-type="number">Status</th>
                 <th class="col-actions"></th>
               </tr>
             </thead>
             <tbody>
               {% for fit in fits %}
                 {% set summary = availability_summaries.get(fit.id) %}
-                {% set status_class = 'status status--grey' %}
-                {% if summary %}
-                  {% if summary.status_category in ['stock', 'market'] %}
-                    {% set status_class = 'status status--green' %}
-                  {% elif summary.status_category == 'short' %}
-                    {% set status_class = 'status status--red' %}
-                  {% else %}
-                    {% set status_class = 'status status--grey' %}
-                  {% endif %}
+                {% set status_category = summary.status_category if summary else 'grey' %}
+                {% set status_class = 'status status--' ~ status_category %}
+                {% set hull_name = summary.hull_name if summary and summary.hull_name else '-' %}
+                {% set target = fit.target_copies or 0 %}
+                {% set available = summary.total_copies_possible if summary else 0 %}
+                {% if target > 0 %}
+                  {% set ratio_value = available / target %}
+                {% else %}
+                  {% set ratio_value = available %}
                 {% endif %}
-                <tr>
+                <tr
+                  class="fit-row"
+                  data-name="{{ fit.name }}"
+                  data-ship="{{ hull_name }}"
+                  data-target="{{ target }}"
+                  data-available="{{ available }}"
+                  data-stock="{{ summary.my_stock_copies if summary else 0 }}"
+                  data-staging="{{ summary.staging_price_per_fit | float if summary and summary.staging_price_per_fit is not none else 0 }}"
+                  data-jita="{{ summary.jita_price_per_fit | float if summary and summary.jita_price_per_fit is not none else 0 }}"
+                  data-status="{{ ratio_value }}"
+                >
                   <td class="col-item">{{ fit.name }}</td>
+                  <td class="col-item">{{ hull_name }}</td>
                   <td class="col-number">{{ fit.target_copies }}</td>
                   <td class="col-number">{{ summary.total_copies_possible if summary else 0 }}</td>
                   <td class="col-number">{{ summary.my_stock_copies if summary else 0 }}</td>
@@ -167,6 +182,57 @@
     </section>
   </div>
 
+  <script>
+    (function () {
+      const table = document.getElementById('fits-table');
+      if (!table) {
+        return;
+      }
+      const tbody = table.querySelector('tbody');
+      let rows = Array.from(tbody.querySelectorAll('.fit-row'));
+      const headers = table.querySelectorAll('th[data-sort-key]');
+
+      headers.forEach((header) => {
+        header.addEventListener('click', () => {
+          const key = header.dataset.sortKey;
+          const type = header.dataset.sortType || 'text';
+          const direction = header.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
+          headers.forEach((h) => h.removeAttribute('data-sort-direction'));
+          header.dataset.sortDirection = direction;
+          rows.sort((a, b) => compareValues(getValue(a, key, type), getValue(b, key, type), direction));
+          rows.forEach((row) => tbody.appendChild(row));
+        });
+      });
+
+      const searchInput = document.getElementById('fit-search');
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          const term = searchInput.value.trim().toLowerCase();
+          rows.forEach((row) => {
+            const haystack = `${row.dataset.name || ''} ${row.dataset.ship || ''}`.toLowerCase();
+            const match = !term || haystack.includes(term);
+            row.classList.toggle('is-hidden', !match);
+          });
+        });
+      }
+
+      function getValue(row, key, type) {
+        const raw = row.dataset[key] || '';
+        if (type === 'number') {
+          return parseFloat(raw) || 0;
+        }
+        return raw.toLowerCase();
+      }
+
+      function compareValues(a, b, direction) {
+        if (a === b) {
+          return 0;
+        }
+        const factor = direction === 'asc' ? 1 : -1;
+        return a > b ? factor : -factor;
+      }
+    })();
+  </script>
   <script>
     (function () {
       const buttons = document.querySelectorAll('.copy-eft');
