@@ -7,6 +7,8 @@ __pycache__/
 
 # Virtual env
 venv/
+ 
+sde/types.yaml
 .env
 run_app.ps1
 
