@@ -25,6 +25,14 @@ async def get_or_create_settings(db: AsyncSession) -> AppSettings:
         ALTER TABLE app_settings
         ADD COLUMN IF NOT EXISTS staging_region_id INTEGER
     """))
+    await db.execute(text("""
+        ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS shipping_cost_per_m3 DOUBLE PRECISION DEFAULT 0
+    """))
+    await db.execute(text("""
+        ALTER TABLE app_settings
+        ADD COLUMN IF NOT EXISTS shipping_collateral_percent DOUBLE PRECISION DEFAULT 0
+    """))
     await db.commit()
 
     stmt = select(AppSettings).where(AppSettings.id == 1)

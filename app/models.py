@@ -244,6 +244,10 @@ class AppSettings(Base):
     # ESI compatibility (for X-Compatibility-Date header later)
     compatibility_date = Column(String, nullable=True)  # e.g. '2025-11-17'
 
+    # Logistics / shipping settings
+    shipping_cost_per_m3 = Column(Float, nullable=True, default=0.0)
+    shipping_collateral_percent = Column(Float, nullable=True, default=0.0)
+
 
 class EsiWalletSyncState(Base):
     __tablename__ = "esi_wallet_sync_state"

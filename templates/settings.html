@@ -127,6 +127,36 @@
                 value="{{ settings.market_scan_interval_minutes or '' }}"
               >
             </div>
+
+            <hr style="margin: 12px 0; border-color: rgba(255, 255, 255, 0.1);">
+            <h3 style="margin-top: 0;">Shipping costs</h3>
+            <p class="help-text">Used for price estimates on fit detail pages.</p>
+
+            <div class="field">
+              <label class="field-label" for="shipping_cost_per_m3">Variable cost per m³ (ISK)</label>
+              <input
+                id="shipping_cost_per_m3"
+                name="shipping_cost_per_m3"
+                class="input"
+                type="number"
+                min="0"
+                step="0.01"
+                value="{{ settings.shipping_cost_per_m3 or '' }}"
+              >
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="shipping_collateral_percent">Collateral fee (% of Jita sell)</label>
+              <input
+                id="shipping_collateral_percent"
+                name="shipping_collateral_percent"
+                class="input"
+                type="number"
+                min="0"
+                step="0.1"
+                value="{{ settings.shipping_collateral_percent or '' }}"
+              >
+            </div>
           </div>
         </div>
       </section>

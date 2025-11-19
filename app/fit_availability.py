@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import Dict, Iterable, List, Optional
+from decimal import Decimal, InvalidOperation
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .models import Fit, FitItem, InventoryLot, Item, MarketOrder, MarketScan
+from .models import AppSettings, Fit, FitItem, InventoryLot, Item, MarketOrder, MarketScan
 
 @dataclass
 class MarketStats:
@@ -29,6 +29,12 @@ class FitItemAvailabilityRow:
 
 
 @dataclass
+class MissingItemEntry:
+    name: str
+    quantity: int
+
+
+@dataclass
 class FitAvailabilitySummary:
     fit: Fit
     target_copies: int
@@ -42,6 +48,16 @@ class FitAvailabilitySummary:
     hull_name: Optional[str]
     latest_staging_scan: Optional[MarketScan]
     latest_jita_scan: Optional[MarketScan]
+    missing_items: List[MissingItemEntry]
+    missing_items_text: str
+    shipping_cost_per_fit: Optional[Decimal]
+    jita_plus_shipping_per_fit: Optional[Decimal]
+    total_volume_m3: Optional[Decimal]
+    shipping_volume_component: Optional[Decimal]
+    shipping_collateral_component: Optional[Decimal]
+    shipping_collateral_percent: float
+    shipping_cost_per_m3_value: Optional[Decimal]
+    missing_by_item_id: Dict[int, MissingItemEntry]
 
 
 class _FitAvailabilityData:
@@ -145,7 +161,8 @@ class _FitAvailabilityData:
 
             deficit = 0
             if target > 0 and required > 0:
-                deficit = max(target * required - inventory_qty, 0)
+                staging_available_units = staging_qty
+                deficit = max(target * required - staging_available_units, 0)
 
             rows.append(
                 FitItemAvailabilityRow(
@@ -185,12 +202,14 @@ def _determine_status(target: int, total: int) -> tuple[str, str]:
 
 
 async def compute_fit_availability_summaries(
-    db: AsyncSession, fits: List[Fit]
+    db: AsyncSession,
+    fits: List[Fit],
+    settings: AppSettings,
 ) -> Dict[int, FitAvailabilitySummary]:
     data = await _FitAvailabilityData.build(db, fits)
     summaries: Dict[int, FitAvailabilitySummary] = {}
     for fit in fits:
-        summaries[fit.id] = _build_summary_for_fit(fit, data)
+        summaries[fit.id] = _build_summary_for_fit(fit, data, settings)
     return summaries
 
 
@@ -202,15 +221,21 @@ async def compute_fit_item_rows(
 
 
 async def compute_fit_detail_data(
-    db: AsyncSession, fit: Fit
+    db: AsyncSession,
+    fit: Fit,
+    settings: AppSettings,
 ) -> tuple[FitAvailabilitySummary, List[FitItemAvailabilityRow]]:
     data = await _FitAvailabilityData.build(db, [fit])
-    summary = _build_summary_for_fit(fit, data)
+    summary = _build_summary_for_fit(fit, data, settings)
     rows = data.build_item_rows(fit)
     return summary, rows
 
 
-def _build_summary_for_fit(fit: Fit, data: _FitAvailabilityData) -> FitAvailabilitySummary:
+def _build_summary_for_fit(
+    fit: Fit,
+    data: _FitAvailabilityData,
+    settings: AppSettings,
+) -> FitAvailabilitySummary:
     rows = data.build_item_rows(fit)
     if rows:
         my_stock_copies = min(row.my_stock_copies_for_this_item for row in rows)
@@ -227,9 +252,23 @@ def _build_summary_for_fit(fit: Fit, data: _FitAvailabilityData) -> FitAvailabil
     staging_price = _aggregate_price(rows, source="staging")
     jita_price = _aggregate_price(rows, source="jita")
 
+    (
+        shipping_cost,
+        total_volume,
+        freight_component,
+        collateral_component,
+    ) = _calculate_shipping_cost(rows, settings, jita_price)
+    jita_plus_shipping = None
+    if shipping_cost is not None and jita_price is not None:
+        jita_plus_shipping = shipping_cost + jita_price
+
     target = fit.target_copies or 0
     status, status_category = _determine_status(target, total_copies_possible)
     hull_name = _infer_hull_name(rows)
+    missing_items = _build_missing_items(rows)
+    missing_text = _format_missing_items_text(missing_items)
+    shipping_percent = float(getattr(settings, "shipping_collateral_percent", 0.0) or 0.0)
+    shipping_rate_value = _safe_decimal_value(getattr(settings, "shipping_cost_per_m3", 0))
 
     return FitAvailabilitySummary(
         fit=fit,
@@ -244,6 +283,16 @@ def _build_summary_for_fit(fit: Fit, data: _FitAvailabilityData) -> FitAvailabil
         hull_name=hull_name,
         latest_staging_scan=data.latest_staging_scan,
         latest_jita_scan=data.latest_jita_scan,
+        missing_items=missing_items,
+        missing_items_text=missing_text,
+        shipping_cost_per_fit=shipping_cost,
+        jita_plus_shipping_per_fit=jita_plus_shipping,
+        total_volume_m3=total_volume,
+        shipping_volume_component=freight_component,
+        shipping_collateral_component=collateral_component,
+        shipping_collateral_percent=shipping_percent,
+        shipping_cost_per_m3_value=shipping_rate_value,
+        missing_by_item_id=_build_missing_by_item(rows),
     )
 
 
@@ -262,6 +311,115 @@ def _aggregate_price(rows: List[FitItemAvailabilityRow], *, source: str) -> Opti
         qty = Decimal(row.required_per_fit)
         total += qty * price
     return total
+
+
+def _build_missing_items(rows: List[FitItemAvailabilityRow]) -> List[MissingItemEntry]:
+    missing: List[MissingItemEntry] = []
+    for row in rows:
+        if row.deficit_for_target <= 0:
+            continue
+        name = row.item.name if row.item else "Unknown item"
+        missing.append(MissingItemEntry(name=name, quantity=row.deficit_for_target))
+    return missing
+
+
+def _format_missing_items_text(items: List[MissingItemEntry]) -> str:
+    if not items:
+        return ""
+    return "\n".join(f"{entry.name} {entry.quantity}" for entry in items)
+
+
+def _build_missing_by_item(rows: List[FitItemAvailabilityRow]) -> Dict[int, MissingItemEntry]:
+    mapping: Dict[int, MissingItemEntry] = {}
+    for row in rows:
+        if row.deficit_for_target <= 0 or not row.item:
+            continue
+        mapping[row.item.id] = MissingItemEntry(name=row.item.name, quantity=row.deficit_for_target)
+    return mapping
+
+
+def merge_missing_items(summaries: Iterable[FitAvailabilitySummary]) -> Dict[str, int]:
+    results: Dict[str, int] = {}
+    for summary in summaries:
+        for entry in summary.missing_by_item_id.values():
+            existing = results.get(entry.name, 0)
+            results[entry.name] = max(existing, entry.quantity)
+    return results
+
+
+def _calculate_shipping_cost(
+    rows: List[FitItemAvailabilityRow],
+    settings: AppSettings,
+    jita_price: Optional[Decimal],
+) -> Tuple[
+    Optional[Decimal],
+    Optional[Decimal],
+    Optional[Decimal],
+    Optional[Decimal],
+]:
+    total_volume = _compute_total_volume(rows)
+    rate = _safe_decimal_value(getattr(settings, "shipping_cost_per_m3", 0))
+    collateral_percent_value = _safe_decimal_value(
+        getattr(settings, "shipping_collateral_percent", 0)
+    )
+    percent_fraction = collateral_percent_value / Decimal("100")
+
+    volume_component: Optional[Decimal]
+    if rate == 0:
+        volume_component = Decimal("0")
+    else:
+        if total_volume is None:
+            return None, total_volume, None, None
+        volume_component = total_volume * rate
+
+    collateral_component: Optional[Decimal]
+    if percent_fraction == 0:
+        collateral_component = Decimal("0")
+    else:
+        if jita_price is None:
+            return None, total_volume, volume_component, None
+        collateral_component = jita_price * percent_fraction
+
+    if volume_component is None or collateral_component is None:
+        return None, total_volume, volume_component, collateral_component
+
+    shipping_cost = volume_component + collateral_component
+    return shipping_cost, total_volume, volume_component, collateral_component
+
+
+def _compute_total_volume(rows: List[FitItemAvailabilityRow]) -> Optional[Decimal]:
+    total = Decimal("0")
+    has_volume = False
+    for row in rows:
+        item = row.item
+        if not item:
+            continue
+        volume = _resolve_volume_for_item(item)
+        if volume is None:
+            continue
+        has_volume = True
+        total += Decimal(row.required_per_fit) * volume
+    if not has_volume:
+        return None
+    return total
+
+
+def _resolve_volume_for_item(item: Item) -> Optional[Decimal]:
+    if item.volume_m3 is not None:
+        return Decimal(str(item.volume_m3))
+    eve_type = getattr(item, "eve_type", None)
+    if eve_type and eve_type.volume_m3 is not None:
+        return Decimal(str(eve_type.volume_m3))
+    return None
+
+
+def _safe_decimal_value(value: Optional[float]) -> Decimal:
+    try:
+        if value is None or value == "":
+            return Decimal("0")
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0")
 
 
 async def _load_market_stats(

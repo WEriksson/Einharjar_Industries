@@ -21,8 +21,42 @@
           <h2>Saved fits</h2>
           <p class="help-text">Availability combines your stock with the latest staging scan.</p>
         </div>
-        <div>
+        <div class="card-header-actions">
+          <form method="post" action="/market/scans/run">
+            <button type="submit" class="nav-button">Run market scan</button>
+          </form>
+          {% if combined_missing %}
+            <button
+              type="button"
+              class="nav-button nav-button--ghost js-copy-button"
+              data-copy-target="global-missing"
+              data-copy-success="Missing copied!"
+            >Copy all missing</button>
+            <textarea id="global-missing" class="sr-only">
+{% for name, qty in combined_missing.items() %}{{ name }} {{ qty }}
+{% endfor %}
+            </textarea>
+          {% endif %}
           <a href="/fits/new" class="primary-button">New fit</a>
+        </div>
+      </div>
+
+      <div class="scan-meta">
+        <div>
+          <strong>Staging scan:</strong>
+          {% if latest_staging_scan %}
+            {{ latest_staging_scan.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}
+            Never
+          {% endif %}
+        </div>
+        <div>
+          <strong>Jita scan:</strong>
+          {% if latest_jita_scan %}
+            {{ latest_jita_scan.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}
+            Never
+          {% endif %}
         </div>
       </div>
 
@@ -93,10 +127,20 @@
                     {% if fit.eft_text %}
                       <button
                         type="button"
-                        class="nav-button nav-button--ghost copy-eft"
-                        data-eid="fit-eft-{{ fit.id }}"
+                        class="nav-button nav-button--ghost js-copy-button"
+                        data-copy-target="fit-eft-{{ fit.id }}"
+                        data-copy-success="Copied!"
                       >Copy EFT</button>
                       <textarea id="fit-eft-{{ fit.id }}" class="sr-only">{{ fit.eft_text }}</textarea>
+                    {% endif %}
+                    {% if summary and summary.missing_items_text %}
+                      <button
+                        type="button"
+                        class="nav-button nav-button--ghost js-copy-button"
+                        data-copy-target="fit-missing-{{ fit.id }}"
+                        data-copy-success="List copied!"
+                      >Copy missing</button>
+                      <textarea id="fit-missing-{{ fit.id }}" class="sr-only">{{ summary.missing_items_text }}</textarea>
                     {% endif %}
                     <a href="/fits/{{ fit.id }}" class="nav-button">View</a>
                   </td>
@@ -235,13 +279,18 @@
   </script>
   <script>
     (function () {
-      const buttons = document.querySelectorAll('.copy-eft');
+      const buttons = document.querySelectorAll('.js-copy-button');
       if (!navigator.clipboard || !buttons.length) {
         return;
       }
       buttons.forEach((btn) => {
+        const original = btn.textContent.trim();
+        const successLabel = btn.dataset.copySuccess || 'Copied';
         btn.addEventListener('click', async () => {
-          const targetId = btn.getAttribute('data-eid');
+          const targetId = btn.getAttribute('data-copy-target');
+          if (!targetId) {
+            return;
+          }
           const source = document.getElementById(targetId);
           if (!source) {
             return;
@@ -249,10 +298,12 @@
           const text = source.value || source.textContent || '';
           try {
             await navigator.clipboard.writeText(text.trim());
-            btn.textContent = 'Copied!';
+            btn.textContent = successLabel;
+            btn.classList.add('is-success');
             setTimeout(() => {
-              btn.textContent = 'Copy EFT';
-            }, 1500);
+              btn.textContent = original;
+              btn.classList.remove('is-success');
+            }, 1600);
           } catch (err) {
             console.error('Clipboard copy failed', err);
           }

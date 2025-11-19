@@ -35,11 +35,11 @@
         </div>
       </div>
 
-      <div class="summary-stats">
+      <div class="summary-stats summary-stats--compact">
         <div class="summary-card">
-          <div class="summary-label">Hull</div>
+          <div class="summary-label">Hull / status</div>
           <div class="summary-value">{{ hull_name or '-' }}</div>
-          <div class="summary-sub">{{ 'Active' if fit.is_active else 'Inactive' }}</div>
+          <div class="summary-sub">{{ availability_summary.status }} · {{ 'Active' if fit.is_active else 'Inactive' }}</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">Target copies</div>
@@ -50,41 +50,63 @@
               min="0"
               value="{{ availability_summary.target_copies }}"
               class="input"
-              style="max-width:110px;"
             >
-            <button type="submit" class="nav-button" style="margin-left:6px;">Save</button>
+            <button type="submit" class="nav-button">Save</button>
           </form>
           <div class="summary-sub">Desired copies of this fit</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">My stock copies</div>
-          <div class="summary-value">{{ availability_summary.my_stock_copies }}</div>
-          <div class="summary-sub">From FIFO inventory</div>
+          <div class="summary-label">Copies available</div>
+          <div class="summary-sub">My stock: {{ availability_summary.my_stock_copies }}</div>
+          <div class="summary-sub">Staging scan: {{ availability_summary.staging_copies }}</div>
+          <div class="summary-sub summary-sub--highlight">Combined: {{ availability_summary.total_copies_possible }}</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">Market copies</div>
-          <div class="summary-value">{{ availability_summary.staging_copies }}</div>
-          <div class="summary-sub">From latest staging scan</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">Total available</div>
-          <div class="summary-value">{{ availability_summary.total_copies_possible }}</div>
-          <div class="summary-sub">Stock + staging</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">Price estimates</div>
+          <div class="summary-label">Price estimate</div>
           <div class="summary-sub">
-            Staging:
-            {% if availability_summary.staging_price_per_fit is not none %}
-              {{ availability_summary.staging_price_per_fit | isk }} ISK
+            Jita sell:
+            {% if availability_summary.jita_price_per_fit is not none %}
+              {{ availability_summary.jita_price_per_fit | isk }} ISK
             {% else %}
               -
             {% endif %}
           </div>
-          <div class="summary-sub" style="margin-top:4px;">
-            Jita sell price:
-            {% if availability_summary.jita_price_per_fit is not none %}
-              {{ availability_summary.jita_price_per_fit | isk }} ISK
+          <div class="summary-sub">
+            {% if availability_summary.shipping_cost_per_m3_value is not none %}
+              {% set per_m3_label = availability_summary.shipping_cost_per_m3_value | isk %}
+            {% else %}
+              {% set per_m3_label = '-' %}
+            {% endif %}
+            Freight ({{ per_m3_label }} ISK / m³):
+            {% if availability_summary.shipping_volume_component is not none %}
+              {{ availability_summary.shipping_volume_component | isk }} ISK
+              {% if availability_summary.total_volume_m3 is not none %}
+                ({{ availability_summary.total_volume_m3 | round(2) }} m³ / fit)
+              {% endif %}
+            {% else %}
+              Configure per m³ cost or volume data missing
+            {% endif %}
+          </div>
+          <div class="summary-sub">
+            Collateral ({{ availability_summary.shipping_collateral_percent | round(2) }}%):
+            {% if availability_summary.shipping_collateral_component is not none %}
+              {{ availability_summary.shipping_collateral_component | isk }} ISK
+            {% else %}
+              Requires Jita price
+            {% endif %}
+          </div>
+          <div class="summary-sub summary-sub--highlight">
+            Shipping total:
+            {% if availability_summary.shipping_cost_per_fit is not none %}
+              {{ availability_summary.shipping_cost_per_fit | isk }} ISK
+            {% else %}
+              -
+            {% endif %}
+          </div>
+          <div class="summary-sub">Estimate: Jita sell + shipping</div>
+          <div class="summary-value summary-value--accent">
+            {% if availability_summary.jita_plus_shipping_per_fit is not none %}
+              ≈ {{ availability_summary.jita_plus_shipping_per_fit | isk }} ISK
             {% else %}
               -
             {% endif %}
@@ -122,40 +144,40 @@
 
       {% if item_rows %}
         <div class="table-wrapper">
-          <table class="data-table">
+          <table class="data-table" id="fit-items-table">
             <thead>
               <tr>
-                <th>Item</th>
-                <th>Required / fit</th>
-                <th>Inventory qty</th>
-                <th>Staging qty</th>
-                <th>Staging min price</th>
-                <th>Jita sell price</th>
-                <th>Deficit vs target</th>
+                <th data-sort-type="text">Item</th>
+                <th data-sort-type="number">Required / fit</th>
+                <th data-sort-type="number">Inventory qty</th>
+                <th data-sort-type="number">Staging qty</th>
+                <th data-sort-type="number">Staging min price</th>
+                <th data-sort-type="number">Jita sell price</th>
+                <th data-sort-type="number">Deficit vs target</th>
               </tr>
             </thead>
             <tbody>
               {% for row in item_rows %}
                 <tr>
                   <td>{{ row.item.name }}</td>
-                  <td>{{ row.required_per_fit }}</td>
-                  <td>{{ row.inventory_qty }}</td>
-                  <td>{{ row.staging_market_qty }}</td>
-                  <td>
+                  <td data-sort-value="{{ row.required_per_fit }}">{{ row.required_per_fit }}</td>
+                  <td data-sort-value="{{ row.inventory_qty }}">{{ row.inventory_qty }}</td>
+                  <td data-sort-value="{{ row.staging_market_qty }}">{{ row.staging_market_qty }}</td>
+                  <td data-sort-value="{{ row.staging_min_price or 0 }}">
                     {% if row.staging_min_price is not none %}
                       {{ row.staging_min_price | isk }} ISK
                     {% else %}
                       -
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-sort-value="{{ row.jita_min_price or 0 }}">
                     {% if row.jita_min_price is not none %}
                       {{ row.jita_min_price | isk }} ISK
                     {% else %}
                       -
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-sort-value="{{ row.deficit_for_target }}">
                     {% if availability_summary.target_copies > 0 %}
                       {{ row.deficit_for_target }}
                     {% else %}
@@ -285,6 +307,49 @@
           }, 4000);
         });
       });
+    })();
+  </script>
+  <script>
+    (function () {
+      const table = document.getElementById('fit-items-table');
+      if (!table) {
+        return;
+      }
+      const tbody = table.querySelector('tbody');
+      const headers = table.querySelectorAll('th[data-sort-type]');
+      headers.forEach((header) => {
+        header.addEventListener('click', () => {
+          const columnIndex = Array.prototype.indexOf.call(header.parentNode.children, header);
+          const type = header.dataset.sortType || 'text';
+          const direction = header.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
+          headers.forEach((h) => h.removeAttribute('data-sort-direction'));
+          header.dataset.sortDirection = direction;
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          rows.sort((a, b) => {
+            const aVal = getValue(a, columnIndex, type);
+            const bVal = getValue(b, columnIndex, type);
+            if (aVal === bVal) {
+              return 0;
+            }
+            const factor = direction === 'asc' ? 1 : -1;
+            return aVal > bVal ? factor : -factor;
+          });
+          rows.forEach((row) => tbody.appendChild(row));
+        });
+      });
+
+      function getValue(row, index, type) {
+        const cell = row.children[index];
+        if (!cell) {
+          return type === 'number' ? 0 : '';
+        }
+        const raw = cell.getAttribute('data-sort-value') ?? cell.textContent.trim();
+        if (type === 'number') {
+          const cleaned = raw.replace(/[^0-9.+-]/g, '');
+          return parseFloat(cleaned) || 0;
+        }
+        return raw.toLowerCase();
+      }
     })();
   </script>
 </body>

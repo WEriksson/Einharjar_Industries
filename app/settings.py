@@ -53,6 +53,8 @@ async def settings_save(
     jita_system_id: int | None = Form(None),
     jita_location_id: int | None = Form(None),
     market_scan_interval_minutes: int | None = Form(None),
+    shipping_cost_per_m3: float | None = Form(None),
+    shipping_collateral_percent: float | None = Form(None),
 ):
     form_data = await request.form()
 
@@ -68,6 +70,13 @@ async def settings_save(
     settings.jita_region_id = 10000002
     settings.jita_system_id = jita_system_id
     settings.jita_location_id = jita_location_id
+
+    settings.shipping_cost_per_m3 = (
+        shipping_cost_per_m3 if shipping_cost_per_m3 is not None else 0.0
+    )
+    settings.shipping_collateral_percent = (
+        shipping_collateral_percent if shipping_collateral_percent is not None else 0.0
+    )
 
     if market_scan_interval_minutes and market_scan_interval_minutes > 0:
         settings.market_scan_interval_minutes = market_scan_interval_minutes

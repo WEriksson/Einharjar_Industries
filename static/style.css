@@ -70,6 +70,42 @@ body {
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.card-header-actions form {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .card-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .card-header-actions form,
+  .card-header-actions .primary-button,
+  .card-header-actions .nav-button {
+    width: 100%;
+  }
+  .card-header-actions .primary-button,
+  .card-header-actions .nav-button {
+    text-align: center;
+  }
+}
+
+.card-header-actions .nav-button,
+.card-header-actions .primary-button {
+  min-width: 160px;
+  flex: 1 1 160px;
 }
 
 .card-header h2 {
@@ -155,6 +191,9 @@ body {
 /* Button */
 
 .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-top: 8px;
   padding: 8px 14px;
   border-radius: 999px;
@@ -273,6 +312,15 @@ body {
   margin: 0 0 8px;
 }
 
+.scan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 4px 0 10px;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
 .table-controls .input {
   max-width: 260px;
 }
@@ -367,7 +415,7 @@ body {
   justify-content: center;
   gap: 6px;
   flex-wrap: nowrap;
-  min-width: 200px;
+  min-width: 240px;
 }
 
 .fit-row.is-hidden {
@@ -431,6 +479,17 @@ body {
   margin-bottom: 10px;
 }
 
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.summary-stats--compact .summary-card {
+  min-height: 150px;
+}
+
 .summary-row--inline {
   margin-top: 0;
 }
@@ -457,9 +516,47 @@ body {
   color: var(--text-soft);
 }
 
+.summary-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  margin-bottom: 4px;
+}
+
 .summary-value {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.summary-value--accent {
+  color: var(--accent-strong);
+}
+
+.summary-sub {
+  margin: 2px 0;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.summary-sub--highlight {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.summary-target-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.summary-target-form .input {
+  max-width: 110px;
+}
+
+.js-copy-button.is-success {
+  color: var(--accent-strong);
+  border-color: rgba(69, 243, 145, 0.6);
 }

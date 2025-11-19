@@ -12,8 +12,10 @@ from .eve_types_service import apply_eve_type_data_to_items
 from .fit_availability import (
     compute_fit_availability_summaries,
     compute_fit_detail_data,
+    merge_missing_items,
 )
-from .models import Fit, FitItem, Item, WatchlistItem
+from .models import Fit, FitItem, Item, MarketScan, WatchlistItem
+from .settings_service import get_or_create_settings
 
 router = APIRouter()
 
@@ -199,7 +201,8 @@ async def list_fits(request: Request, db: AsyncSession = Depends(get_db)):
     res_fits = await db.execute(stmt_fits)
     fits = res_fits.scalars().all()
 
-    availability_summaries = await compute_fit_availability_summaries(db, fits)
+    settings = await get_or_create_settings(db)
+    availability_summaries = await compute_fit_availability_summaries(db, fits, settings)
 
     stmt_watch = (
         select(WatchlistItem)
@@ -209,6 +212,10 @@ async def list_fits(request: Request, db: AsyncSession = Depends(get_db)):
     res_watch = await db.execute(stmt_watch)
     watchlist = res_watch.scalars().all()
 
+    latest_staging_scan = await _get_latest_scan(db, "staging")
+    latest_jita_scan = await _get_latest_scan(db, "jita")
+    combined_missing = merge_missing_items(availability_summaries.values())
+
     return request.app.state.templates.TemplateResponse(
         "fits.html",
         {
@@ -217,6 +224,9 @@ async def list_fits(request: Request, db: AsyncSession = Depends(get_db)):
             "availability_summaries": availability_summaries,
             "watchlist": watchlist,
             "current_page": "fits",
+            "latest_staging_scan": latest_staging_scan,
+            "latest_jita_scan": latest_jita_scan,
+            "combined_missing": combined_missing,
         },
     )
 
@@ -286,7 +296,8 @@ async def create_fit(
 @router.get("/fits/{fit_id}", response_class=HTMLResponse)
 async def fit_detail(request: Request, fit_id: int, db: AsyncSession = Depends(get_db)):
     fit = await _get_fit(db, fit_id)
-    availability_summary, item_rows = await compute_fit_detail_data(db, fit)
+    settings = await get_or_create_settings(db)
+    availability_summary, item_rows = await compute_fit_detail_data(db, fit, settings)
     hull_name = _guess_fit_hull_name(fit)
 
     return request.app.state.templates.TemplateResponse(
@@ -393,6 +404,17 @@ async def delete_fit(fit_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(fit)
     await db.commit()
     return RedirectResponse("/fits", status_code=302)
+
+
+async def _get_latest_scan(db: AsyncSession, location_kind: str) -> Optional[MarketScan]:
+    stmt = (
+        select(MarketScan)
+        .where(MarketScan.location_kind == location_kind)
+        .order_by(MarketScan.created_at.desc())
+        .limit(1)
+    )
+    res = await db.execute(stmt)
+    return res.scalar_one_or_none()
 
 
 @router.post("/watchlist/add")
